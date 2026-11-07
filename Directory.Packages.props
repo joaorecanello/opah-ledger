@@ -23,11 +23,47 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.13" />
   </ItemGroup>
 
+  <ItemGroup Label="Persistência">
+    <!--
+      O EF Core é declarado explicitamente, e não herdado como dependência
+      transitiva do provider. Sem isto há conflito real de assembly: o
+      Npgsql 10.0.3 foi compilado contra o EF 10.0.4, o pacote de Design pede
+      10.0.13, e como Design entra com PrivateAssets=all a versão dele não flui
+      para Ledger.Api — que então resolveria 10.0.4 enquanto
+      Ledger.Infrastructure foi compilada contra 10.0.13.
+
+      Declarar aqui é exatamente o que o Central Package Management existe para
+      fazer: uma versão, verificada no build, em lugar de qualquer versão que a
+      resolução transitiva escolher em cada projeto.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Abstractions" Version="10.0.13" />
+
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+
+    <!--
+      Necessário apenas em tempo de design, para gerar migrations. Entra com
+      PrivateAssets=all no csproj: não deve ir para o pacote publicado nem
+      vazar para quem referencia a infraestrutura.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13" />
+  </ItemGroup>
+
   <ItemGroup Label="Testes">
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
-    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <!--
+      xUnit v3, e não o v2, por um motivo concreto: o v2 não expõe Assert.Skip, e
+      o mecanismo de skip dinâmico dele — um prefixo de mensagem definido num
+      tipo interno — não é honrado pelo runner. Verifiquei: com o v2, ignorar um
+      teste por ausência de banco virava 25 falhas com o token cru na mensagem.
+      No v3, Assert.Skip é de primeira classe.
+
+      O v3 traz o próprio runner e o Microsoft.Testing.Platform, logo não há
+      Microsoft.NET.Test.Sdk, xunit.runner.visualstudio nem coverlet.collector:
+      os três pertencem ao VSTest, que o SDK .NET 10 não suporta mais junto do
+      Microsoft.Testing.Platform.
+    -->
+    <PackageVersion Include="xunit.v3" Version="4.0.2" />
 
     <!--
       Sobe a API em memória com WebApplicationFactory: sem porta, sem Docker e
@@ -49,6 +85,13 @@
       erosão por "using conveniente".
     -->
     <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
+
+    <!--
+      PostgreSQL real nos testes de integração. Banco em memória não reproduz
+      unique constraint sob concorrência, logo o teste de idempotência — o mais
+      importante da suíte — passaria sem provar nada.
+    -->
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
   </ItemGroup>
 
 </Project>

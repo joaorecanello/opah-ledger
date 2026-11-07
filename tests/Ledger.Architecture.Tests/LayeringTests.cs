@@ -99,7 +99,7 @@ public sealed class LayeringTests
             $"Ledger.Domain deve ter dependência zero. Encontrado: {string.Join(", ", externas)}");
     }
 
-    private static string Describe(TestResult result)
+    private static string Describe(NetArchTest.Rules.TestResult result)
     {
         var nomes = result.FailingTypeNames ?? [];
         return nomes.Count == 0

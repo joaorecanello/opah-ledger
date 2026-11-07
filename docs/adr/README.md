@@ -24,6 +24,9 @@ que seria essencial documentar para que outra pessoa do time evolua a solução.
 | [0009](0009-protecao-de-dados-sensiveis.md) | Proteção de dados sensíveis, e LGPD sobre ledger imutável | aceito |
 | [0010](0010-observabilidade.md) | Observabilidade com métricas de negócio | aceito |
 | [0011](0011-biblioteca-de-assercao.md) | Shouldly em lugar de FluentAssertions | aceito |
+| [0012](0012-idempotencia-em-tabela-propria.md) | Chave de idempotência em tabela própria, não em coluna de `movements` | aceito |
+| [0013](0013-modelo-de-persistencia-separado.md) | Modelo de persistência separado do modelo de domínio | aceito |
+| [0014](0014-xunit-v3-e-testing-platform.md) | xUnit v3 e Microsoft.Testing.Platform | aceito |
 
 ## Por onde começar
 
@@ -43,9 +46,26 @@ Depois disso, **[0004](0004-snapshot-de-saldo.md)** é o ADR que paga a dívida 
 e **[0001](0001-monolito-modular.md)** são os dois onde a decisão foi **não**
 adotar algo — que é o tipo de decisão que o enunciado pede para justificar.
 
+## As que nasceram da implementação
+
+A 0011, a 0012, a 0013 e a 0014 não estavam planejadas. Surgiram ao implementar,
+e cada uma registra uma colisão real entre decisões anteriores ou entre uma
+decisão e a ferramenta:
+
+- **[0012](0012-idempotencia-em-tabela-propria.md)** é a mais importante das
+  quatro, e revisa a [0003](0003-idempotencia-como-contrato.md): o PostgreSQL
+  exige que o unique constraint de tabela particionada inclua a coluna de
+  particionamento, o que tornaria o constraint de idempotência **inútil sem
+  parecer inútil**.
+- **[0013](0013-modelo-de-persistencia-separado.md)** resolve o atrito entre um
+  domínio estritamente imutável e um ORM que precisa materializar objetos.
+- **[0014](0014-xunit-v3-e-testing-platform.md)** documenta uma descoberta sobre
+  a plataforma de testes, e uma lição: um teste que verifica uma constante não
+  verifica um comportamento.
+
 ## Numeração
 
-A 0011 foi escrita antes das demais porque a decisão surgiu durante a montagem
-da estrutura do projeto, ao escolher as dependências de teste, e registrá-la na
-hora era mais honesto que renumerar depois. As ADRs são identificadas pela ordem
-em que foram **decididas**, não pela ordem em que convém ler.
+As ADRs são identificadas pela ordem em que foram **decididas**, não pela ordem
+em que convém ler. A 0011 tem número mais alto que a 0010 e foi escrita antes de
+todas, porque a decisão surgiu ao montar a estrutura do projeto — registrá-la na
+hora era mais honesto que renumerar depois.

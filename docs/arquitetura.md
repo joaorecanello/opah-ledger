@@ -179,58 +179,108 @@ a extração de um serviço ficar caro.
 
 ## Modelo de dados
 
+Nomes de tabela e coluna como o PostgreSQL de fato os criou — é o que alguém vê
+ao abrir o `psql` durante um incidente.
+
 ```mermaid
 erDiagram
-    ACCOUNT ||--o{ MOVEMENT : "registra"
-    ACCOUNT ||--o{ BALANCE_SNAPSHOT : "consolida"
+    accounts ||--o{ movements : "registra"
+    accounts ||--o{ balance_snapshots : "consolida"
+    movements |o--|| idempotency_records : "garante unicidade"
 
-    ACCOUNT {
-        uuid AccountId PK
-        uuid CustomerId "opaco, sem PII"
-        char Currency "BRL"
-        text Status
-        bigint Version "reservado, sem uso: ver ADR-0007"
+    accounts {
+        uuid id PK
+        uuid customer_id "opaco, sem PII"
+        char currency "char(3)"
+        varchar status "Active, Blocked, Closed"
+        bigint version "reservado, sem uso: ver ADR-0007"
     }
 
-    MOVEMENT {
-        uuid MovementId PK "v7, ordenavel por tempo"
-        uuid AccountId FK
-        text Type "Credit ou Debit"
-        numeric Amount "19,4 sempre positivo"
-        char Currency
-        timestamptz OccurredAt "tempo de negocio"
-        timestamptz PostedAt "tempo de sistema"
-        text IdempotencyKey UK
-        text ExternalReference
-        text CorrelationId "rastreia ate a requisicao"
+    movements {
+        uuid id PK "v7, ordenavel por tempo"
+        uuid account_id FK
+        varchar type "Credit ou Debit, como texto"
+        numeric amount "19,4 sempre positivo. CHECK amount gt 0"
+        char currency "char(3)"
+        timestamptz occurred_at "tempo de negocio"
+        timestamptz posted_at "tempo de sistema"
+        varchar idempotency_key "indice NAO unico: ver ADR-0012"
+        varchar external_reference
+        varchar correlation_id "rastreia ate a requisicao"
     }
 
-    BALANCE_SNAPSHOT {
-        uuid AccountId PK, FK
-        date AsOfDate PK
-        numeric ClosingBalance "19,4"
-        bigint MovementCount
-        bool IsStale "invalidado por retroativa"
+    idempotency_records {
+        varchar key PK "a unicidade vive aqui"
+        uuid account_id
+        uuid movement_id
+        varchar request_fingerprint "distingue replay de conflito"
+        timestamptz created_at
+        timestamptz expires_at
+    }
+
+    balance_snapshots {
+        uuid account_id PK, FK
+        date as_of_date PK
+        numeric closing_balance "19,4"
+        char currency "char(3)"
+        bigint movement_count
+        boolean is_stale "invalidado por retroativa"
     }
 ```
 
-Quatro pontos que não se leem no diagrama:
+Índices, além das chaves primárias:
 
-**Não existe coluna de saldo em `ACCOUNT`.** Essa ausência é a decisão central
-de [ADR-0002](adr/0002-ledger-append-only.md). Saldo é função sobre o log, não
-estado.
+| Índice | Serve a |
+|--------|---------|
+| `ix_movements_account_id_occurred_at` | a consulta de saldo e o extrato: dada uma conta, percorrer a janela de tempo. É a razão de a consulta temporal não varrer a tabela |
+| `ix_movements_idempotency_key` | localizar a movimentação pela chave. **Não é único** |
+| `ix_accounts_customer_id` | localizar as contas de um cliente |
+| `ix_idempotency_records_expires_at` | a limpeza das chaves expiradas, sem varredura |
 
-**`MOVEMENT` nunca sofre `UPDATE` nem `DELETE`.** Correção de erro é movimentação
-compensatória que referencia a original ([PR-06](premissas.md#pr-06)).
+Cinco pontos que não se leem no diagrama:
 
-**`Amount` é sempre positivo** — o sinal é semântica de `Type`. Isso impede a
-classe de bug em que um crédito negativo se torna um débito silencioso. E é
-`numeric`, nunca ponto flutuante: há teste de arquitetura que proíbe `double` e
-`float` no domínio.
+**Não existe coluna de saldo em `accounts`.** Essa ausência é a decisão central
+de [ADR-0002](adr/0002-ledger-append-only.md): saldo é função sobre o log, não
+estado. Há teste de integração que consulta o catálogo do PostgreSQL e exige que
+nenhuma tabela, exceto `balance_snapshots`, tenha coluna com "balance" ou
+"saldo" no nome.
 
-**`BALANCE_SNAPSHOT` é descartável.** Pode ser truncada por inteiro e o worker a
-reconstrói do ledger. É o que torna a otimização de
+**`movements` nunca sofre `UPDATE` nem `DELETE`.** Correção de erro é
+movimentação compensatória que referencia a original
+([PR-06](premissas.md#pr-06)).
+
+**`amount` é sempre positivo** — o sinal é semântica de `type`. Isso impede a
+classe de bug em que um crédito negativo se torna um débito silencioso, e está
+imposto **duas vezes**: pelo domínio e por `CHECK (amount > 0)` no esquema.
+Defesa em profundidade: um caminho de código que contorne o domínio, como uma
+importação em lote, ainda é barrado. Há teste que escreve direto na tabela para
+verificar isso.
+
+**A unicidade da idempotência não está em `movements`.** Está na chave primária
+de `idempotency_records`, por uma razão que só apareceu ao implementar: o
+PostgreSQL exige que o unique constraint de uma tabela particionada inclua a
+coluna de particionamento, e `movements` será particionada por mês. Um unique em
+`(chave, data)` permitiria a mesma chave em dias diferentes — a duplicata que a
+chave existe para impedir. Ver [ADR-0012](adr/0012-idempotencia-em-tabela-propria.md).
+
+**`balance_snapshots` é descartável.** Pode ser truncada por inteiro e o worker
+a reconstrói do ledger. É o que torna a otimização de
 [ADR-0004](adr/0004-snapshot-de-saldo.md) aceitável em dados financeiros.
+
+### Modelo de persistência separado do domínio
+
+Os tipos que o EF Core mapeia (`MovementRecord`, `AccountRecord`, …) **não são**
+as entidades de domínio. O domínio é estritamente imutável, com construtores
+privados e objetos de valor; um ORM precisa de tipos que ele consiga
+materializar. Em lugar de o domínio ceder, a persistência ganhou tipos próprios
+e um mapeador explícito.
+
+O argumento decisivo: **este sistema não usa rastreamento de mudanças.** A
+escrita é `INSERT` e a leitura é agregação; não há alteração a detectar. O que o
+EF traz de valor aqui são migrations versionadas e esquema tipado, e para isso
+tipos planos bastam. Daí `QueryTrackingBehavior.NoTracking` como padrão do
+contexto — declaração de que o recurso não é usado, não otimização.
+Ver [ADR-0013](adr/0013-modelo-de-persistencia-separado.md).
 
 ---
 

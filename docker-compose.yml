@@ -1,0 +1,47 @@
+# PostgreSQL para desenvolvimento e para rodar os testes de integração
+# localmente.
+#
+# A aplicação ainda não está aqui: ela entra quando houver endpoints de negócio
+# para servir. Hoje este arquivo existe para uma coisa só, e ela é concreta —
+# dar um banco de pé com um comando, para que as migrations e os testes de
+# integração rodem sem instalar PostgreSQL na máquina.
+#
+#   docker compose up -d
+#   dotnet ef database update --project src/Ledger.Infrastructure --startup-project src/Ledger.Infrastructure
+#   dotnet test
+#
+# A senha aqui é de desenvolvimento e está em claro de propósito: é um banco
+# descartável em porta local. Credencial de verdade nunca entra em arquivo
+# versionado.
+
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: ledger-db
+    environment:
+      POSTGRES_DB: ledger
+      POSTGRES_USER: ledger
+      POSTGRES_PASSWORD: ledger
+      # Checksums de página: o PostgreSQL passa a detectar corrupção silenciosa
+      # de dados em disco, em lugar de servir um valor errado como se estivesse
+      # certo. Custa alguns por cento de CPU e é o tipo de troca que um razão
+      # contábil faz sem pensar duas vezes. Ligado já no ambiente local para que
+      # o desenvolvimento rode com a mesma configuração de produção.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      - "5432:5432"
+    volumes:
+      - ledger-db-data:/var/lib/postgresql/data
+    healthcheck:
+      # O "pg_isready" responde antes de o banco aceitar conexão de verdade em
+      # alguns casos; o teste de conexão real evita subir a aplicação contra um
+      # banco que ainda está inicializando.
+      test: ["CMD-SHELL", "pg_isready -U ledger -d ledger && psql -U ledger -d ledger -c 'select 1' > /dev/null"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  ledger-db-data:

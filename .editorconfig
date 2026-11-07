@@ -125,6 +125,27 @@ dotnet_naming_symbols.public_symbols.applicable_accessibilities = public,interna
 dotnet_naming_style.pascal.capitalization = pascal_case
 
 # ---------------------------------------------------------------------------
+# Migrations do EF Core: código gerado
+# ---------------------------------------------------------------------------
+#
+# O EF gera estes arquivos, e o que ele gera não segue o padrão de código deste
+# repositório — na primeira migration, IDE0161 (namespace com escopo de arquivo)
+# e CA1861 (array constante como argumento). Com TreatWarningsAsErrors isso
+# quebra o build.
+#
+# As três saídas possíveis eram: editar o código gerado à mão, que a próxima
+# migration desfaz; baixar o nível de análise do projeto inteiro, que joga a
+# regra fora onde ela importa; ou excluir da análise o diretório de código
+# gerado. Esta é a terceira.
+#
+# A exclusão é por diretório e só de análise de estilo e qualidade: erro de
+# compilação continua sendo erro. O requisito obrigatório de compilar sem
+# warnings permanece verificado em todo o código escrito à mão.
+[**/Migrations/*.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none
+
+# ---------------------------------------------------------------------------
 # Projetos de teste: relaxamentos justificados
 # ---------------------------------------------------------------------------
 [tests/**/*.cs]

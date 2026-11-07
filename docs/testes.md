@@ -22,14 +22,14 @@ requisito de RO-04, não conveniência.
 
 | # | Cenário | Tipo | Por que é crítico | Status |
 |---|---------|------|-------------------|--------|
-| 1 | Mesma `Idempotency-Key` enviada duas vezes resulta em uma movimentação, com resposta idêntica | integração | **duplicar dinheiro é a pior falha deste domínio**: é invisível até a conciliação | pendente (E06) |
-| 2 | Mesma chave com conteúdo diferente resulta em `409` e nada persistido | integração | impede adivinhar intenção do chamador | pendente (E06) |
-| 3 | 1.000 movimentações concorrentes na mesma conta resultam em saldo igual à soma exata | concorrência | prova empírica de [ADR-0002](adr/0002-ledger-append-only.md); é o bug provável do legado | pendente (E14) |
+| 1 | Mesma `Idempotency-Key` enviada duas vezes resulta em uma movimentação, com resposta idêntica | integração | **duplicar dinheiro é a pior falha deste domínio**: é invisível até a conciliação | **mecanismo verificado**; falta a resposta HTTP |
+| 2 | Mesma chave com conteúdo diferente resulta em `409` e nada persistido | integração | impede adivinhar intenção do chamador | **distinção verificada**; falta o `409` da API |
+| 3 | 1.000 movimentações concorrentes na mesma conta resultam em saldo igual à soma exata | concorrência | prova empírica de [ADR-0002](adr/0002-ledger-append-only.md); é o bug provável do legado | **20 simultâneas verificadas**; falta a escala |
 | 4 | Saldo `asOf` anterior à primeira movimentação devolve zero, não erro | integração | fronteira clássica | **no domínio**; falta no fim a fim |
 | 5 | Saldo `asOf` exatamente no instante de uma movimentação é inclusivo e documentado | integração | ambiguidade que vira discrepância de centavos | pendente (E07) |
 | 6 | Snapshot é equivalente ao cálculo direto para 10.000 movimentações em datas aleatórias | propriedade | **a otimização não pode mudar o número** | **em miniatura**; falta com banco (E10) |
 | 7 | Movimentação retroativa invalida snapshots e o saldo segue correto | integração | o caso difícil de [PR-04](premissas.md#pr-04) | pendente (E10) |
-| 8 | Falha de commit (banco derrubado no meio) não persiste nada e o retry é limpo | integração | atomicidade real, não presumida | pendente (E06) |
+| 8 | Falha de commit (banco derrubado no meio) não persiste nada e o retry é limpo | integração | atomicidade real, não presumida | **atomicidade no conflito verificada**; falta derrubar o banco |
 | 9 | Soma de um milhão de valores em `decimal` não acumula erro de arredondamento | unitário | precisão monetária | **implementado** |
 | 10 | Requisição sem token ou com escopo errado responde `401`/`403` | integração | RNF-05 | pendente (E13) |
 | 11 | Banco indisponível faz `/health/ready` falhar e `/health/live` continuar OK | integração | RNF-03; a confusão entre os dois converte falha parcial em queda total | pendente (E11) |
@@ -40,7 +40,11 @@ decisão arquitetural**, em vez de apenas exercitar código.
 
 ## O que já roda hoje
 
-96 testes: 87 de domínio, 7 de arquitetura, 2 de smoke do host.
+121 testes: 87 de domínio, 7 de arquitetura, 27 de integração.
+
+Numa máquina sem Docker e sem `LEDGER_TEST_DB`, os 25 testes que dependem de
+banco são **ignorados com mensagem explícita** e `dotnet test` sai com código 0.
+Verificado nos dois caminhos.
 
 ### Testes de domínio (87)
 
@@ -95,15 +99,61 @@ A forma provável de o bug entrar nunca foi alguém declarar `double Saldo`. É
 alguém escrever `var total = 0.0;` num cálculo auxiliar, onde nenhuma revisão de
 código repara — e é esse caso que a regra pega.
 
-### Testes de smoke do host (2)
+### Testes de integração (27)
 
-| Teste | O que pega |
-|-------|-----------|
-| O host sobe e responde `/health/live` | erro de composição: DI mal registrada, middleware em ordem inválida, configuração ausente |
-| Rota inexistente responde `application/problem+json`, não HTML | que RFC 9457 vale para o pipeline inteiro, não só para os handlers escritos à mão |
+Contra PostgreSQL real. Dois deles são smoke do host HTTP e não precisam de
+banco; os outros 25 precisam.
 
-Um projeto que compila mas não sobe não está pronto. Esta é a classe de erro
-que, sem teste, só aparece ao rodar a aplicação à mão.
+| Arquivo | O que cobre |
+|---------|-------------|
+| `HostSmokeTests` | o host sobe e responde `/health/live`; rota inexistente responde `application/problem+json`, não HTML |
+| `SchemaTests` | o esquema **como o PostgreSQL o criou**: tabelas, `numeric(19,4)`, `timestamptz`, o índice que serve à consulta de saldo, onde a unicidade vive, e a ausência de coluna de saldo |
+| `IdempotencyConstraintTests` | mesma chave duas vezes grava uma movimentação só; a transação da tentativa recusada é inteira desfeita; 20 tentativas simultâneas registram uma só; chaves diferentes com mesmo valor são duas movimentações |
+| `PersistenceRoundTripTests` | precisão decimal na ida e volta, soma de mil centavos pelo próprio banco, instante com fuso de origem, ida e volta completa do domínio, e o esquema recusando valor não positivo e conta inexistente |
+
+Três merecem destaque:
+
+- **`Vinte_tentativas_simultaneas_com_a_mesma_chave_registram_uma_so`** é o caso
+  que uma consulta prévia do tipo "esta chave já existe?" **não** resolveria:
+  todas as tentativas começam juntas, nenhuma vê a outra, e só o constraint
+  decide. É a razão de a suíte usar PostgreSQL real — num provedor em memória
+  este teste passaria sem verificar nada.
+- **`Tentativa_duplicada_nao_deixa_movimentacao_orfa`** verifica que a
+  movimentação e o registro de idempotência entram na mesma transação. Se fossem
+  separados, a segunda tentativa gravaria a movimentação e só depois falharia na
+  chave — deixando uma duplicata no razão com a aparência de ter sido recusada.
+- **`Nao_existe_coluna_de_saldo_em_lugar_nenhum`** consulta o catálogo do
+  PostgreSQL. A ausência de saldo mutável é a decisão central da solução, e
+  precisa valer no esquema e não só no domínio.
+
+Que as **migrations aplicam** não tem teste próprio: o fixture as aplica contra o
+banco em toda execução da suíte. Verificação de graça e sempre, em lugar de um
+teste que alguém poderia esquecer de rodar.
+
+Um projeto que compila mas não sobe não está pronto — daí o smoke do host. É a
+classe de erro que, sem teste, só aparece ao rodar a aplicação à mão.
+
+### Como obter o banco
+
+Três caminhos, em ordem de preferência:
+
+```bash
+docker compose up -d
+```
+
+Com Docker disponível, não é nem necessário: o Testcontainers sobe e descarta um
+container sozinho, e é assim que o CI roda.
+
+Para apontar para um PostgreSQL que já existe:
+
+```bash
+LEDGER_TEST_DB="Host=localhost;Port=5432;Database=ledger;Username=ledger;Password=ledger" dotnet test
+```
+
+A diferença de tratamento entre os dois é deliberada: se `LEDGER_TEST_DB` está
+definida e o banco não responde, os testes **falham** — quem definiu a variável
+pediu para rodar contra aquele banco, e ignorar em silêncio esconderia o
+problema. Sem a variável e sem Docker, eles são **ignorados**.
 
 ## Ferramental, e por quê
 

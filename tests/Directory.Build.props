@@ -13,20 +13,35 @@
   <PropertyGroup>
     <IsTestProject>true</IsTestProject>
     <IsPackable>false</IsPackable>
+
+    <!--
+      Projeto de teste do xUnit v3 é executável: ele carrega o próprio runner em
+      lugar de ser hospedado por um adaptador externo.
+    -->
+    <OutputType>Exe</OutputType>
+
+    <!--
+      Microsoft.Testing.Platform em lugar do VSTest.
+
+      Não é preferência: a partir do SDK .NET 10 o VSTest deixou de ser
+      suportado pelo Microsoft.Testing.Platform, e o build falha com erro
+      explícito se a gente tentar. O xUnit v3 já traz o MTP, e esta propriedade
+      liga o suporte dele no "dotnet test".
+
+      A consequência prática está no CI: os parâmetros de relatório mudam de
+      forma, e vão depois do separador de argumentos.
+    -->
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 
   <ItemGroup Label="Infraestrutura de teste comum">
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
+    <!--
+      O xUnit v3 traz o runner e a plataforma de teste. Não há mais
+      Microsoft.NET.Test.Sdk, xunit.runner.visualstudio nem coverlet.collector:
+      os três são do mundo VSTest.
+    -->
+    <PackageReference Include="xunit.v3" />
     <PackageReference Include="Shouldly" />
-    <PackageReference Include="xunit.runner.visualstudio">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="coverlet.collector">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

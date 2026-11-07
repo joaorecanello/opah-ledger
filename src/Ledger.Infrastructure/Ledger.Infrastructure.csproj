@@ -10,6 +10,20 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!--
+      Referência explícita e não privada: garante que a mesma versão do EF Core
+      flua para Ledger.Api e Ledger.Worker. Ver o comentário em
+      Directory.Packages.props.
+    -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Ledger.Application/Ledger.Application.csproj" />
   </ItemGroup>
 

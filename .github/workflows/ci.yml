@@ -55,11 +55,20 @@ jobs:
       - name: Build (Release, warnings são erros)
         run: dotnet build --no-restore --configuration Release -warnaserror
 
+      # O runner do Ubuntu tem Docker, logo o Testcontainers sobe o PostgreSQL e
+      # os testes de integração rodam de verdade aqui. Numa máquina sem Docker
+      # eles são ignorados com mensagem explícita, e é por isso que o CI é a
+      # verificação que vale para a camada de persistência.
+      #
+      # Os parâmetros são do Microsoft.Testing.Platform, não do VSTest: o
+      # diretório de resultados é opção do "dotnet test", e o relatório vem do
+      # próprio app de teste, depois do separador de argumentos.
       - name: Testes
         run: >
           dotnet test --no-build --configuration Release
-          --logger "trx;LogFileName=test-results.trx"
           --results-directory ${{ runner.temp }}/test-results
+          --results-directory-layout per-module
+          -- --report-xunit-ctrf
 
       - name: Publicar resultado dos testes
         if: always()

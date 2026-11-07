@@ -101,6 +101,12 @@ que a idempotência existia para evitar.
 - Há *unique constraint* em banco sobre a chave de idempotência. A garantia vive
   no esquema, não no código de aplicação — então ela sobrevive a um caso de uso
   reescrito.
+  > **Onde exatamente ela vive** está em
+  > [ADR-0012](0012-idempotencia-em-tabela-propria.md). A leitura natural deste
+  > ADR era uma coluna única em `movements`, e ela não funciona: com a tabela
+  > particionada por data, o PostgreSQL exigiria a data no constraint, o que
+  > permitiria a mesma chave em dias diferentes — a duplicata que a chave existe
+  > para impedir.
 - Se o commit falhar, nada foi registrado e o retry é seguro **por construção**:
   como o ledger é append-only ([ADR-0002](0002-ledger-append-only.md)), não há
   update parcial a desfazer.

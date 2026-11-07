@@ -6,9 +6,10 @@ Razão contábil para movimentações financeiras de clientes de um banco digita
 registra créditos e débitos em contas e responde a posição consolidada de saldo
 em qualquer ponto do tempo.
 
-> **Estado atual: domínio implementado e testado, sem persistência.**
-> As decisões estão documentadas, o modelo de domínio existe com 87 testes de
-> invariante, e não há banco de dados nem endpoints de negócio ainda. A seção
+> **Estado atual: domínio e persistência implementados, sem endpoints de
+> negócio.** 121 testes, sendo 25 contra PostgreSQL real. O esquema existe com
+> migrations aplicáveis, e a garantia de idempotência está verificada no banco.
+> Falta o caso de uso de registro e a API. A seção
 > [Estado atual](#estado-atual) é explícita sobre o que existe e o que não
 > existe.
 
@@ -43,6 +44,13 @@ hipótese. Mas é ela que orienta a decisão central.
    cliente correto. E duplicar dinheiro é pior que indisponibilidade, porque é
    invisível até a conciliação.
    → [ADR-0003](docs/adr/0003-idempotencia-como-contrato.md)
+
+   A implementação revelou uma armadilha: o constraint **não** pode ficar em
+   `movements`. Com a tabela particionada por data, o PostgreSQL exigiria a data
+   no unique, o que permitiria a mesma chave em dias diferentes — a duplicata
+   que a chave existe para impedir, com um esquema que parece correto. A
+   unicidade vive em tabela própria.
+   → [ADR-0012](docs/adr/0012-idempotencia-em-tabela-propria.md)
 
 3. **Snapshot de saldo é cache, nunca verdade.** A consulta temporal é servida
    por snapshot de período fechado mais o delta do período corrente. Como o
@@ -79,9 +87,9 @@ decorrem dessas duas.
 
 - [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0) — qualquer
   versão 10.x serve (o `global.json` usa `rollForward: latestFeature`).
-- Docker — **ainda não necessário**. Passa a ser a partir da persistência e dos
-  testes de integração com Testcontainers, que serão ignorados com mensagem
-  explícita quando o Docker não estiver disponível.
+- **Docker — opcional.** Sem ele, `dotnet test` roda os 96 testes que não
+  dependem de banco e **ignora** os 25 de integração com mensagem explícita,
+  saindo com código 0. Com ele, os 121 rodam. Verificado nos dois caminhos.
 
 Nenhum certificado TLS de desenvolvimento é necessário: localmente a API sobe em
 HTTP puro de propósito. Em produção, o TLS é terminado antes da aplicação.
@@ -98,6 +106,22 @@ dotnet build -warnaserror
 
 ```bash
 dotnet test
+```
+
+Para rodar também os testes de integração, suba o PostgreSQL:
+
+```bash
+docker compose up -d
+```
+
+Com Docker disponível isso não é obrigatório — o Testcontainers sobe e descarta
+um container sozinho, e é assim que o CI roda. O `docker compose` serve a quem
+quer um banco persistente para desenvolver.
+
+Aplicar as migrations nesse banco:
+
+```bash
+dotnet tool restore && dotnet ef database update --project src/Ledger.Infrastructure --startup-project src/Ledger.Infrastructure
 ```
 
 Subir a API:
@@ -136,13 +160,16 @@ dotnet run --project src/Ledger.Worker
   Verde em runner limpo.
 - **Domínio completo e imutável:** `Account`, `Movement`, `Money`, `Currency`,
   `IdempotencyKey`, `BalanceSnapshot` e o cálculo de saldo.
-- 96 testes passando: 87 de domínio, 7 de arquitetura, 2 de smoke do host HTTP.
-- Requisitos decompostos, 13 premissas registradas e 11 ADRs escritas.
+- **Persistência em PostgreSQL:** esquema, migrations aplicáveis, índices,
+  `CHECK (amount > 0)` e a unicidade da idempotência verificada no banco.
+- 121 testes passando: 87 de domínio, 7 de arquitetura, 27 de integração
+  (25 contra PostgreSQL real).
+- Requisitos decompostos, 13 premissas registradas e 14 ADRs escritas.
 
 **Não existe ainda:**
 
-- Persistência, migrations, PostgreSQL.
-- Caso de uso de registro de movimentação com idempotência.
+- Caso de uso de registro de movimentação com idempotência — o mecanismo está
+  verificado no banco, falta a semântica HTTP (`201`, `200` no replay, `409`).
 - Consulta de saldo consolidado.
 - Endpoints de negócio.
 - `docker compose up` de um comando.
@@ -201,15 +228,17 @@ antes do merge.
 src/
   Ledger.Domain          entidades e invariantes. Dependência ZERO, por regra testada
   Ledger.Application     casos de uso e portas (interfaces)
-  Ledger.Infrastructure  adaptadores: persistência, telemetria, outbox
+  Ledger.Infrastructure  adaptadores
+    Persistence/           DbContext, records, migrations, mapeamento explícito
   Ledger.Api             host HTTP
   Ledger.Worker          host de background: consolidação, reconciliação, outbox
 tests/
   Ledger.Domain.Tests        invariantes do domínio. Sem banco, sem HTTP, sem Docker
   Ledger.Architecture.Tests  fronteiras de camada e proibição de ponto flutuante
-  Ledger.Integration.Tests   API em memória; depois, PostgreSQL real
+  Ledger.Integration.Tests   API em memória e PostgreSQL real via Testcontainers
 docs/
   adr/                       decisões arquiteturais
+docker-compose.yml       PostgreSQL para desenvolvimento
 ```
 
 As setas de dependência apontam `Api`/`Worker` → `Infrastructure` →
@@ -232,6 +261,14 @@ não por disciplina:
 | `.editorconfig` | estilo e nomenclatura verificados no build (`EnforceCodeStyleInBuild`) |
 | `.github/workflows/ci.yml` | `dotnet format --verify-no-changes` mais build Release com `-warnaserror`, em runner limpo |
 
+Há **uma** exclusão, e ela é por diretório: as migrations geradas pelo EF Core
+ficam fora da análise de estilo e qualidade. O código que o EF gera não segue o
+padrão do repositório — na primeira migration, `IDE0161` e `CA1861` —, e as
+alternativas eram editar código gerado à mão, que a próxima migration desfaz, ou
+baixar o nível de análise do projeto inteiro. A exclusão cobre só
+`**/Migrations/*.cs`, e erro de compilação continua sendo erro: o requisito de
+compilar sem warnings permanece verificado em todo o código escrito à mão.
+
 A combinação de SDK tolerante com conjunto de regras congelado parece
 contraditória e é o ponto: quem avalia compila com o SDK que tiver, e as regras
 que decidem o que é warning não mudam com ele.
@@ -248,5 +285,10 @@ previsto.
 dotnet test
 ```
 
+121 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
+banco em memória não reproduz unique constraint sob concorrência, logo o teste
+de idempotência — o mais importante da suíte — passaria sem provar nada.
+
 Detalhe em [docs/testes.md](docs/testes.md), incluindo os 12 cenários críticos
-ordenados por risco financeiro e o que deliberadamente não é testado.
+ordenados por risco financeiro, o que deliberadamente não é testado, e como
+obter o banco.

@@ -18,7 +18,7 @@ public sealed class HostSmokeTests(LedgerApiFactory factory) : IClassFixture<Led
     {
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync(new Uri("/health/live", UriKind.Relative));
+        using var response = await client.GetAsync(new Uri("/health/live", UriKind.Relative), TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
@@ -31,7 +31,7 @@ public sealed class HostSmokeTests(LedgerApiFactory factory) : IClassFixture<Led
         // HTML onde espera JSON.
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync(new Uri("/rota-que-nao-existe", UriKind.Relative));
+        using var response = await client.GetAsync(new Uri("/rota-que-nao-existe", UriKind.Relative), TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         response.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");

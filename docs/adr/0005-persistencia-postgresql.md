@@ -88,7 +88,10 @@ nenhuma revisão de código repara.
 | Decisão | Origem |
 |---------|--------|
 | Tabela de movimentações append-only, sem `UPDATE` nem `DELETE` | [ADR-0002](0002-ledger-append-only.md) |
-| *Unique constraint* na chave de idempotência | [ADR-0003](0003-idempotencia-como-contrato.md) |
+| *Unique constraint* da idempotência em tabela própria, não particionada | [ADR-0003](0003-idempotencia-como-contrato.md) e [ADR-0012](0012-idempotencia-em-tabela-propria.md) |
+| Modelo de persistência separado do domínio, mapeado explicitamente | [ADR-0013](0013-modelo-de-persistencia-separado.md) |
+| `CHECK (amount > 0)` em `movements` | [ADR-0002](0002-ledger-append-only.md): o sinal é do tipo, não do número |
+| Enums como texto, não inteiro | legibilidade em consulta manual durante incidente |
 | Índice por `(AccountId, OccurredAt)` | RF-02 |
 | Colunas `OccurredAt` e `PostedAt` separadas | bitemporalidade, [PR-04](../premissas.md#pr-04) |
 | Particionamento por mês | [PR-02](../premissas.md#pr-02); consulta temporal toca uma partição |
