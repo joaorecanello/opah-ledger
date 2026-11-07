@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testes de arquitetura: travam as fronteiras de camada do ADR-001.
+
+    Sem isto, "monolito modular" degrada para "monolito" em poucos sprints,
+    porque nada impede um using conveniente. Com isto, a erosao quebra o build.
+    E tambem o que torna a extracao de um servico mecanica no futuro.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Ledger.Architecture.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetArchTest.Rules" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Ledger.Domain/Ledger.Domain.csproj" />
+    <ProjectReference Include="../../src/Ledger.Application/Ledger.Application.csproj" />
+    <ProjectReference Include="../../src/Ledger.Infrastructure/Ledger.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/Ledger.Api/Ledger.Api.csproj" />
+  </ItemGroup>
+
+</Project>

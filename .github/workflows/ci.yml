@@ -1,0 +1,68 @@
+# CI do opah-ledger.
+#
+# Proposito principal: provar publicamente, em maquina limpa, que o requisito
+# obrigatorio "codigo fonte deve compilar sem erros e warnings" esta atendido.
+# Esse requisito e eliminatorio no desafio e e o mais facil de violar por
+# acidente (um SDK diferente, um analisador novo, um nullable esquecido).
+# Deixar a verificacao para a revisao manual na vespera e o pior momento.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build e testes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar .NET SDK (versao do global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      # Estilo de codigo e verificado separadamente porque nem toda regra IDE
+      # do .editorconfig e reportada por "dotnet build", mesmo com
+      # EnforceCodeStyleInBuild. Sem este passo, build local e CI poderiam
+      # discordar sobre o que e codigo valido.
+      - name: Verificar formatacao e estilo
+        run: dotnet format --verify-no-changes --verbosity minimal
+
+      # -warnaserror e redundante com TreatWarningsAsErrors do
+      # Directory.Build.props, e esta aqui de proposito: se alguem relaxar a
+      # propriedade no csproj, o CI continua barrando.
+      - name: Build (Release, warnings sao erros)
+        run: dotnet build --no-restore --configuration Release -warnaserror
+
+      - name: Testes
+        run: >
+          dotnet test --no-build --configuration Release
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory ${{ runner.temp }}/test-results
+
+      - name: Publicar resultado dos testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ${{ runner.temp }}/test-results
+          if-no-files-found: ignore
+          retention-days: 7

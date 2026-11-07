@@ -1,0 +1,41 @@
+<Project>
+
+  <!--
+    Higiene de build central (ADR-003 do desafio: "compilar sem erros e sem warnings"
+    e um requisito eliminatorio, logo tratado por construcao e nao por disciplina).
+
+    Decisoes deliberadas:
+      - TreatWarningsAsErrors: o build RECUSA compilar fora do padrao.
+      - AnalysisLevel fixado em 10.0 (e nao em "latest"): congela o conjunto de regras
+        dos analisadores. Assim um SDK mais novo na maquina do avaliador nao introduz
+        regras novas que virariam warning -> erro.
+      - global.json usa rollForward=latestFeature: qualquer SDK .NET 10 serve para
+        compilar. Tolerancia de ambiente sem abrir mao da estabilidade das regras.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <Deterministic>true</Deterministic>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Build hygiene">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors></WarningsNotAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>10.0</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Central package management">
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+</Project>

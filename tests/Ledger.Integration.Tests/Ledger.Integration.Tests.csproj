@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testes de integracao com PostgreSQL real via Testcontainers (E06).
+    Banco em memoria nao reproduz unique constraint sob concorrencia, logo o
+    teste de idempotencia seria falso-positivo.
+
+    Estes testes detectam a ausencia de Docker e sao ignorados com mensagem
+    explicita, para que "dotnet test" nunca falhe por ambiente na maquina do
+    avaliador (requisito obrigatorio: README que roda localmente).
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Ledger.Integration.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Ledger.Api/Ledger.Api.csproj" />
+    <ProjectReference Include="../../src/Ledger.Infrastructure/Ledger.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

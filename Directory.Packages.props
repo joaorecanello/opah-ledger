@@ -1,0 +1,49 @@
+<Project>
+
+  <!--
+    Central Package Management: todas as versoes de pacote vivem aqui.
+    Os .csproj declaram apenas o Include, nunca a Version.
+
+    Razao: num repositorio com 9 projetos, versao divergente do mesmo pacote
+    entre projetos e fonte classica de bug que so aparece em runtime. Aqui a
+    divergencia e impossivel por construcao.
+
+    Pacotes sao adicionados conforme as etapas do plano os exigem (EF Core em
+    E05, Serilog/OpenTelemetry em E12, Testcontainers em E06, etc.). A lista
+    abaixo contem apenas o que o codigo de fato usa hoje.
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="ASP.NET Core / Hosting">
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.13" />
+  </ItemGroup>
+
+  <ItemGroup Label="Testes">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+
+    <!--
+      Sobe a API em memoria (WebApplicationFactory) sem porta, sem Docker e
+      sem processo externo. Versao casada com o runtime ASP.NET Core 10.0.13.
+    -->
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
+
+    <!--
+      Shouldly (BSD-3) em lugar de FluentAssertions: a partir da v8 o
+      FluentAssertions passou a exigir licenca paga para uso comercial.
+      Num codigo que seria entregue a um banco, isso e risco juridico, nao
+      preferencia de estilo. Ver docs/adr/0011-biblioteca-de-assercao.md.
+    -->
+    <PackageVersion Include="Shouldly" Version="4.3.0" />
+
+    <!-- Testes de arquitetura: protegem as fronteiras de camada do ADR-001. -->
+    <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
+  </ItemGroup>
+
+</Project>

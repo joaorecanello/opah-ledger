@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Ledger.Domain - nucleo do dominio (ADR-001 / ADR-002).
+
+    REGRA: este projeto nao tem NENHUMA PackageReference e NENHUMA
+    ProjectReference. Dependencia zero e proposital: o dominio nao conhece
+    banco, HTTP, serializacao nem framework. Qualquer linha adicionada aqui
+    quebra Ledger.Architecture.Tests de proposito.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Ledger.Domain</RootNamespace>
+  </PropertyGroup>
+
+</Project>
