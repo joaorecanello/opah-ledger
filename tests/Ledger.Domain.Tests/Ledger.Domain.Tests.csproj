@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testes de invariante de dominio. Sem banco, sem HTTP, sem Docker: o dominio
+    nao tem dependencia nenhuma, logo testa-lo nao precisa de infraestrutura.
+    Esta e a suite que roda em milissegundos e cobre as regras que, violadas,
+    produzem dinheiro errado.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Ledger.Domain.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Ledger.Domain/Ledger.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

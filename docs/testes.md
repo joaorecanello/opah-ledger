@@ -25,12 +25,12 @@ requisito de RO-04, não conveniência.
 | 1 | Mesma `Idempotency-Key` enviada duas vezes resulta em uma movimentação, com resposta idêntica | integração | **duplicar dinheiro é a pior falha deste domínio**: é invisível até a conciliação | pendente (E06) |
 | 2 | Mesma chave com conteúdo diferente resulta em `409` e nada persistido | integração | impede adivinhar intenção do chamador | pendente (E06) |
 | 3 | 1.000 movimentações concorrentes na mesma conta resultam em saldo igual à soma exata | concorrência | prova empírica de [ADR-0002](adr/0002-ledger-append-only.md); é o bug provável do legado | pendente (E14) |
-| 4 | Saldo `asOf` anterior à primeira movimentação devolve zero, não erro | integração | fronteira clássica | pendente (E07) |
+| 4 | Saldo `asOf` anterior à primeira movimentação devolve zero, não erro | integração | fronteira clássica | **no domínio**; falta no fim a fim |
 | 5 | Saldo `asOf` exatamente no instante de uma movimentação é inclusivo e documentado | integração | ambiguidade que vira discrepância de centavos | pendente (E07) |
-| 6 | Snapshot é equivalente ao cálculo direto para 10.000 movimentações em datas aleatórias | propriedade | **a otimização não pode mudar o número** | pendente (E10) |
+| 6 | Snapshot é equivalente ao cálculo direto para 10.000 movimentações em datas aleatórias | propriedade | **a otimização não pode mudar o número** | **em miniatura**; falta com banco (E10) |
 | 7 | Movimentação retroativa invalida snapshots e o saldo segue correto | integração | o caso difícil de [PR-04](premissas.md#pr-04) | pendente (E10) |
 | 8 | Falha de commit (banco derrubado no meio) não persiste nada e o retry é limpo | integração | atomicidade real, não presumida | pendente (E06) |
-| 9 | Soma de um milhão de valores em `decimal` não acumula erro de arredondamento | unitário | precisão monetária | pendente (E04) |
+| 9 | Soma de um milhão de valores em `decimal` não acumula erro de arredondamento | unitário | precisão monetária | **implementado** |
 | 10 | Requisição sem token ou com escopo errado responde `401`/`403` | integração | RNF-05 | pendente (E13) |
 | 11 | Banco indisponível faz `/health/ready` falhar e `/health/live` continuar OK | integração | RNF-03; a confusão entre os dois converte falha parcial em queda total | pendente (E11) |
 | 12 | Fronteiras de camada: domínio sem dependência de infraestrutura | arquitetura | protege [ADR-0001](adr/0001-monolito-modular.md) da erosão | **implementado** |
@@ -40,8 +40,35 @@ decisão arquitetural**, em vez de apenas exercitar código.
 
 ## O que já roda hoje
 
-9 testes. Nenhuma linha de lógica de negócio foi escrita ainda, então o que
-existe protege estrutura, não comportamento:
+96 testes: 87 de domínio, 7 de arquitetura, 2 de smoke do host.
+
+### Testes de domínio (87)
+
+Rodam em meio segundo, sem banco, sem HTTP e sem Docker — consequência direta de
+`Ledger.Domain` não ter dependência nenhuma. Agrupados por tipo:
+
+| Arquivo | O que cobre |
+|---------|-------------|
+| `MoneyTests` | escala máxima de 4 casas, rejeição em vez de arredondamento, operação entre moedas diferentes, comparação, igualdade com escalas distintas, soma de um milhão de centavos |
+| `CurrencyTests` | normalização ISO 4217, rejeição de formato inválido, `default` da struct reconhecido como ausente |
+| `IdempotencyKeyTests` | tamanho mínimo e máximo, rejeição de espaço e caractere de controle |
+| `AccountTests` | sinal pelo tipo, moeda da conta, conta encerrada e bloqueada, ausência de saldo na conta, bitemporalidade, correlação obrigatória |
+| `BalanceCalculatorTests` | zero sem movimentação, comutatividade, saldo de abertura, equivalência incremental, saldo negativo |
+| `ImmutabilityTests` | nenhum tipo do domínio tem propriedade alterável, campo público mutável ou método que altere estado |
+
+Três deles merecem destaque porque não testam código, **testam decisões**:
+
+- **`Conta_nao_expoe_saldo`** compara a lista de propriedades de `Account` com a
+  lista esperada. A ausência de saldo é a decisão central da solução
+  ([ADR-0002](adr/0002-ledger-append-only.md)); sem este teste, reintroduzi-la
+  seria uma linha conveniente que passa em revisão de código.
+- **`Nao_valida_saldo_suficiente`** registra um débito de R$ 1.000.000 numa conta
+  sem lastro e exige sucesso. É [PR-03](premissas.md#pr-03) em forma executável:
+  se alguém adicionar validação de saldo, a conversa acontece antes do merge.
+- **`Ponto_flutuante_binario_acumularia_erro_na_mesma_soma`** soma um milhão de
+  vezes `0.01` em `double` e exige que o resultado **não** seja 10.000. Não
+  verifica o domínio: documenta, de forma que não envelhece, por que o domínio
+  proíbe `double`. Se alguém propuser a troca, este é o número que responde.
 
 ### Testes de arquitetura (7)
 
@@ -59,10 +86,14 @@ Sem esses testes, "monólito modular" degrada para "monólito" em poucas sprints
 porque nada impede um `using` conveniente — e ninguém percebe até a extração de
 um serviço ficar caro.
 
-Os dois últimos passam trivialmente hoje, porque o domínio está vazio. O valor
-deles começa quando houver código, e a forma provável de o bug entrar não é
-alguém declarar `double Saldo` — é alguém escrever `var total = 0.0;` num
-cálculo auxiliar, onde nenhuma revisão de código repara.
+As duas últimas regras deixaram de passar trivialmente: com o domínio
+implementado, elas agora varrem tipos reais — campos, propriedades, retornos e
+parâmetros de `Money`, `Movement`, `Account` e dos demais — e confirmam que
+nenhum deles usa `double` ou `float`.
+
+A forma provável de o bug entrar nunca foi alguém declarar `double Saldo`. É
+alguém escrever `var total = 0.0;` num cálculo auxiliar, onde nenhuma revisão de
+código repara — e é esse caso que a regra pega.
 
 ### Testes de smoke do host (2)
 

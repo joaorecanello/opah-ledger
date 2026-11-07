@@ -6,9 +6,9 @@ Razão contábil para movimentações financeiras de clientes de um banco digita
 registra créditos e débitos em contas e responde a posição consolidada de saldo
 em qualquer ponto do tempo.
 
-> **Estado atual: estrutura e decisões arquiteturais.**
-> O projeto compila, sobe e tem testes passando, e as decisões estão
-> documentadas. O domínio ainda não foi implementado — a seção
+> **Estado atual: domínio implementado e testado, sem persistência.**
+> As decisões estão documentadas, o modelo de domínio existe com 87 testes de
+> invariante, e não há banco de dados nem endpoints de negócio ainda. A seção
 > [Estado atual](#estado-atual) é explícita sobre o que existe e o que não
 > existe.
 
@@ -65,7 +65,7 @@ Toda no repositório, conforme o requisito obrigatório.
 | Documento | Conteúdo |
 |-----------|----------|
 | [docs/requisitos.md](docs/requisitos.md) | requisitos funcionais, não funcionais e restrições, rastreados ao enunciado |
-| [docs/premissas.md](docs/premissas.md) | as 12 lacunas do enunciado, a premissa adotada, o impacto se estiver errada e a pergunta que eu faria |
+| [docs/premissas.md](docs/premissas.md) | as 13 lacunas do enunciado, a premissa adotada, o impacto se estiver errada e a pergunta que eu faria |
 | [docs/arquitetura.md](docs/arquitetura.md) | diagramas C4 em três níveis e modelo de dados |
 | [docs/fluxos.md](docs/fluxos.md) | sequência dos dois casos de uso, incluindo retry, conflito e movimentação retroativa |
 | [docs/adr/](docs/adr/) | 11 decisões arquiteturais, cada uma com alternativas, trade-offs e gatilho de revisão |
@@ -134,12 +134,13 @@ dotnet run --project src/Ledger.Worker
   estilo verificado no build e no CI.
 - CI no GitHub Actions: formatação, build em Release com `-warnaserror` e testes.
   Verde em runner limpo.
-- 9 testes passando: 7 de arquitetura, 2 de smoke do host HTTP.
-- Requisitos decompostos, 12 premissas registradas e 11 ADRs escritas.
+- **Domínio completo e imutável:** `Account`, `Movement`, `Money`, `Currency`,
+  `IdempotencyKey`, `BalanceSnapshot` e o cálculo de saldo.
+- 96 testes passando: 87 de domínio, 7 de arquitetura, 2 de smoke do host HTTP.
+- Requisitos decompostos, 13 premissas registradas e 11 ADRs escritas.
 
 **Não existe ainda:**
 
-- Domínio (`Account`, `Movement`, `Money`).
 - Persistência, migrations, PostgreSQL.
 - Caso de uso de registro de movimentação com idempotência.
 - Consulta de saldo consolidado.
@@ -147,10 +148,52 @@ dotnet run --project src/Ledger.Worker
 - `docker compose up` de um comando.
 - Snapshots, resiliência, observabilidade, segurança.
 
-Os ADRs descrevem o desenho dessas partes; o código delas é o próximo passo.
-Essa separação é deliberada: o enunciado pede para demonstrar como se pensa e
-prioriza, e decidir antes de implementar é a ordem que eu defenderia em qualquer
-projeto real.
+Os ADRs descrevem o desenho dessas partes. Decidir antes de implementar é a
+ordem que eu defenderia em qualquer projeto real, e é também o que o enunciado
+pede ao dizer que quer entender como se pensa e prioriza.
+
+## O domínio
+
+Seis tipos, nenhuma dependência externa, 87 testes. O que mais importa saber:
+
+**`Account` não tem saldo.** A ausência é a decisão, não um esquecimento — e há
+teste que falha se alguém adicionar a propriedade. A conta também não carrega a
+coleção de movimentações: ela guarda os invariantes que governam o registro
+(moeda e situação) e é a porta obrigatória por onde a movimentação é criada. É um
+agregado que protege regras sem materializar o histórico que elas governam.
+
+**`Movement` é imutável e guarda valor sempre positivo.** O sinal é semântica do
+tipo (`Credit`/`Debit`), não do número, o que impede a classe de bug em que um
+crédito negativo se comporta como débito sem que nada pareça errado. Guarda dois
+instantes: `OccurredAt` (tempo de negócio) e `PostedAt` (tempo de sistema,
+definido pelo servidor).
+
+**`Money` usa `decimal` com até quatro casas, e rejeita em vez de arredondar.**
+Quatro casas porque existe fração de centavo em taxa e rateio; rejeitar porque
+arredondamento silencioso move dinheiro sem ninguém ter decidido isso. Operação
+entre moedas diferentes é recusada: converter é decisão de negócio, não
+conversão implícita.
+
+**`MovementId` é UUID v7**, ordenável por tempo. Dá localidade de índice na
+escrita e não revela volume de operação. Veio da biblioteca base do .NET em
+lugar de ULID porque o domínio tem dependência zero — ver
+[ADR-0007](docs/adr/0007-ordenacao-do-ledger.md).
+
+**O cálculo de saldo é uma função pura** em `BalanceCalculator`, e é comutativo:
+há teste que embaralha os lançamentos e exige o mesmo resultado. Isso confirma
+que o saldo não depende de ordenação contígua, que é o que permite escrever sem
+contenção.
+
+Duas premissas estão verificadas de forma executável, e não apenas escritas:
+
+- **o razão não valida saldo** ([PR-03](docs/premissas.md#pr-03)) — há teste que
+  registra um débito de R$ 1.000.000 numa conta sem lastro e exige sucesso;
+- **conta bloqueada aceita registro, encerrada não**
+  ([PR-13](docs/premissas.md#pr-13)) — bloqueio impede originar operação, não
+  registrar fato que já aconteceu.
+
+Se alguém discordar de uma dessas premissas, o teste falha e a conversa acontece
+antes do merge.
 
 ## Estrutura
 
@@ -162,6 +205,7 @@ src/
   Ledger.Api             host HTTP
   Ledger.Worker          host de background: consolidação, reconciliação, outbox
 tests/
+  Ledger.Domain.Tests        invariantes do domínio. Sem banco, sem HTTP, sem Docker
   Ledger.Architecture.Tests  fronteiras de camada e proibição de ponto flutuante
   Ledger.Integration.Tests   API em memória; depois, PostgreSQL real
 docs/

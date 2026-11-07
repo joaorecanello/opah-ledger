@@ -223,6 +223,42 @@ ela é a própria tabela de snapshots.
 
 ---
 
+## PR-13 — O que a situação da conta impede
+
+**Lacuna.** O enunciado não fala de conta bloqueada ou encerrada, mas conta sem
+situação não existe num banco real.
+
+**Premissa.** São duas situações com efeitos diferentes sobre o registro:
+
+| Situação | Aceita registro? |
+|----------|------------------|
+| `Active` | sim |
+| `Blocked` | **sim** |
+| `Closed` | não |
+
+**Por que bloqueio aceita registro.** Bloqueio impede **originar** operação, não
+**registrar** fato que já aconteceu. Um estorno de operação anterior, ou um
+lançamento em trânsito no momento em que o bloqueio entrou em vigor, precisa
+entrar no razão — recusá-lo faria a contabilidade divergir da realidade, que é
+exatamente o tipo de inconsistência que RNF-04 proíbe.
+
+É a mesma lógica de [PR-03](#pr-03): este sistema registra o fato consumado. Quem
+decide se a operação pode acontecer é quem a origina.
+
+**Por que encerramento recusa.** Encerramento é definitivo: a conta não existe
+mais para fins operacionais, e um lançamento nela indica erro de roteamento na
+origem — falhar alto é mais útil que registrar silenciosamente num lugar errado.
+
+**Impacto se estiver errada.** Localizado. É uma condição em
+`Account.Register`, e há teste de domínio para cada uma das três situações. Se o
+banco disser que bloqueio também recusa, muda uma linha e um teste.
+
+**Pergunta ao banco.** Conta bloqueada deve recusar registro de movimentação, ou
+apenas impedir que novas operações sejam originadas? Há diferença entre bloqueio
+judicial e bloqueio operacional?
+
+---
+
 ## Contradição aparente no enunciado
 
 O enunciado pede uma solução "robusta, apta a operar em um ambiente financeiro

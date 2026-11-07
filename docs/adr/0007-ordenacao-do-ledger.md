@@ -15,7 +15,7 @@ contenção.
 
 ## Alternativas consideradas
 
-1. **Identificador ordenável por tempo** (ULID) mais `OccurredAt`, sem
+1. **Identificador ordenável por tempo** (UUID v7) mais `OccurredAt`, sem
    sequência por conta.
 2. **Contador monotônico por conta**, com *unique constraint* em
    `(AccountId, Sequence)` e concorrência otimística com retry no conflito.
@@ -60,13 +60,43 @@ Duas razões, e as duas são sobre requisitos que **não** estão no enunciado:
    da mesma conta — e portanto não há necessidade técnica de sequência por
    conta.
 
-ULID dá ordenação total determinística, é gerado na aplicação sem ida ao banco,
-ordena por tempo de criação e não revela volume (ao contrário de um `bigint`
-sequencial exposto, que informa a terceiros quantas movimentações o banco
-processa).
+UUID v7 (RFC 9562) dá ordenação determinística, é gerado na aplicação sem ida ao
+banco e tem duas propriedades que importam aqui:
 
-Com `OccurredAt` como critério de negócio e o ULID como desempate estável, toda
-consulta tem ordem determinística, e escritas concorrentes não disputam nada.
+- **Ordena por tempo de criação**, porque os 48 bits mais significativos são o
+  instante em milissegundos. Isso dá localidade de índice na escrita: inserções
+  consecutivas caem na mesma página, em lugar de espalhar por toda a árvore como
+  um UUID v4 faria.
+- **Não revela volume**, ao contrário de um `bigint` sequencial exposto, que
+  informa a terceiros quantas movimentações o banco processou entre dois
+  identificadores.
+
+### Por que UUID v7 e não ULID
+
+A escolha original foi ULID, que entrega as mesmas duas propriedades. UUID v7
+venceu por uma restrição concreta deste projeto: **`Ledger.Domain` tem
+dependência zero verificada por teste de arquitetura**, e ULID exigiria um
+pacote externo dentro do domínio — ou uma implementação própria de codificação
+base32 de Crockford, que é código de infraestrutura mal colocado numa camada de
+negócio.
+
+`Guid.CreateVersion7()` está na biblioteca base do .NET 9+. Mesma propriedade,
+zero dependência, e um padrão com RFC em lugar de uma especificação de
+repositório.
+
+A geração recebe o instante como parâmetro (`MovementId.NewAt(postedAt)`) em
+lugar de ler o relógio do sistema internamente, para que o domínio permaneça
+determinístico e testável: quem chama controla o tempo.
+
+Com `OccurredAt` como critério de negócio e o UUID v7 como desempate estável,
+toda consulta tem ordem determinística, e escritas concorrentes não disputam
+nada.
+
+E há uma consequência que o cálculo de saldo torna visível: a soma das
+movimentações é comutativa, logo **o saldo não depende de ordem alguma**. Há
+teste de domínio que embaralha os lançamentos e exige o mesmo resultado. Isso
+confirma que a sequência contígua não é requisito de corretude aqui — ela seria
+requisito de auditoria, que é outra conversa.
 
 ### A honestidade desta decisão
 

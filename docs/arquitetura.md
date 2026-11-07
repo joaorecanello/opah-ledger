@@ -189,11 +189,11 @@ erDiagram
         uuid CustomerId "opaco, sem PII"
         char Currency "BRL"
         text Status
-        bigint Version "reservado: ver ADR-0007"
+        bigint Version "reservado, sem uso: ver ADR-0007"
     }
 
     MOVEMENT {
-        ulid MovementId PK "ordenavel por tempo"
+        uuid MovementId PK "v7, ordenavel por tempo"
         uuid AccountId FK
         text Type "Credit ou Debit"
         numeric Amount "19,4 sempre positivo"
