@@ -3,13 +3,13 @@ using System.Reflection;
 namespace Ledger.Infrastructure;
 
 /// <summary>
-/// Marcador de assembly de infraestrutura.
+/// Marcador de assembly da infraestrutura.
 /// </summary>
 /// <remarks>
-/// Existe para dar aos testes de arquitetura um ponto de entrada estavel por
-/// camada, sem depender de nome de assembly em string (que silenciosamente
-/// para de encontrar o assembly se alguem renomear o projeto, fazendo o teste
-/// passar sem verificar nada).
+/// Existe para dar aos testes de arquitetura um ponto de entrada estável por
+/// camada, sem depender de nome de assembly em string — que silenciosamente
+/// para de encontrar o assembly se alguém renomear o projeto, fazendo o teste
+/// passar sem verificar nada.
 /// </remarks>
 public static class InfrastructureAssembly
 {

@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Ledger.Infrastructure - adaptadores: persistencia (EF Core/PostgreSQL em
-    E05), telemetria, outbox. Implementa as portas declaradas em Application.
+    Ledger.Infrastructure — adaptadores: persistência (EF Core e PostgreSQL),
+    telemetria e outbox. Implementa as portas declaradas em Application.
   -->
 
   <PropertyGroup>

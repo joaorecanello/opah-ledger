@@ -1,55 +1,59 @@
-# ADR-0011 - Biblioteca de assercao: Shouldly em lugar de FluentAssertions
+# ADR-0011 — Biblioteca de asserção: Shouldly em lugar de FluentAssertions
 
 - **Status:** aceito
 - **Data:** 2026-11-07
-- **Contexto da decisao:** etapa E03 (scaffold), ao definir as dependencias de teste
+- **Contexto da decisão:** montagem da estrutura do projeto, ao definir as dependências de teste
 
 ## Problema
 
-Os testes precisam de assercoes legiveis, com mensagem de falha que explique o
-que deu errado sem obrigar quem le o relatorio a abrir o codigo. No ecossistema
-.NET o padrao de fato e o FluentAssertions.
+Os testes precisam de asserções legíveis, com mensagem de falha que explique o
+que deu errado sem obrigar quem lê o relatório a abrir o código. No ecossistema
+.NET, o padrão de fato é o FluentAssertions.
 
 ## Alternativas consideradas
 
-1. **FluentAssertions 8.x** - padrao de mercado, API mais rica, mais familiar
+1. **FluentAssertions 8.x** — padrão de mercado, API mais rica, mais familiar
    para a maioria dos times .NET.
-2. **FluentAssertions 7.x** - ultima versao sob Apache-2.0.
-3. **Shouldly 4.x** - BSD-3-Clause, API fluente equivalente para o que este
+2. **FluentAssertions 7.x** — última versão sob Apache-2.0.
+3. **Shouldly 4.x** — BSD-3-Clause, API fluente equivalente para o que este
    projeto precisa.
-4. **Assert nativo do xUnit** - zero dependencia.
+4. **`Assert` nativo do xUnit** — dependência zero.
 
-## Decisao
+## Decisão
 
 Shouldly 4.3.0.
 
 ## Justificativa
 
-A partir da versao 8, o FluentAssertions passou a ser licenciado pela Xceed e
-**exige licenca paga para uso comercial**. Este codigo e um desafio tecnico para
-um banco: se a solucao fosse adotada, ela entraria num contexto comercial, e a
-dependencia viraria uma obrigacao de compra herdada de uma escolha feita sem
-que ninguem percebesse. Isso nao e trade-off tecnico, e passivo juridico.
+A partir da versão 8, o FluentAssertions passou a ser licenciado pela Xceed e
+**exige licença paga para uso comercial**.
 
-Ficar na versao 7 (alternativa 2) resolveria a licenca, mas me deixaria numa
-versao que nao recebe mais correcao - divida tecnica com data marcada.
+Este código é um desafio técnico para um banco. Se a solução fosse adotada, ela
+entraria num contexto comercial, e a dependência viraria uma obrigação de compra
+herdada de uma escolha que ninguém revisou. Isso não é trade-off técnico, é
+passivo jurídico — e é o tipo de coisa que só aparece quando o jurídico faz
+auditoria de dependências, muito depois de a decisão ter sido tomada.
 
-O Assert nativo (alternativa 4) seria aceitavel, mas as mensagens de falha sao
-pobres o suficiente para que, num teste de concorrencia com mil movimentacoes,
-a saida nao diga o que divergiu.
+**Alternativa 2** resolveria a licença, mas me deixaria numa versão que não
+recebe mais correção: dívida técnica com data marcada.
 
-Shouldly e permissivo, mantido, e cobre o que este projeto usa.
+**Alternativa 4** seria aceitável, mas as mensagens de falha são pobres o
+suficiente para que, num teste de concorrência com mil movimentações, a saída
+não diga o que divergiu — e esse é justamente o teste em que eu mais preciso de
+uma boa mensagem.
 
-## Consequencias
+Shouldly é permissivo, mantido e cobre o que este projeto usa.
 
-- Quem conhece FluentAssertions precisa de alguns minutos de adaptacao:
-  `valor.Should().Be(x)` passa a ser `valor.ShouldBe(x)`. Custo baixo e unico.
-- Menos recursos avancados de comparacao de grafo de objetos. Se um teste
-  futuro precisar, a comparacao explicita e aceitavel e mais legivel.
-- Nenhuma obrigacao de licenca comercial no repositorio.
+## Consequências
 
-## Gatilho de revisao
+- Quem conhece FluentAssertions precisa de alguns minutos de adaptação:
+  `valor.Should().Be(x)` passa a ser `valor.ShouldBe(x)`. Custo baixo e único.
+- Menos recursos avançados de comparação de grafo de objetos. Se um teste futuro
+  precisar, a comparação explícita é aceitável e costuma ser mais legível.
+- Nenhuma obrigação de licença comercial no repositório.
 
-Se o banco ja tiver licenca corporativa do FluentAssertions, a decisao se
-inverte: a familiaridade do time passa a valer mais que a diferenca de licenca,
-e a migracao e mecanica.
+## Gatilho de revisão
+
+Se o banco já tiver licença corporativa do FluentAssertions, a decisão se
+inverte: a familiaridade do time passa a valer mais que a diferença de licença,
+e a migração é mecânica.

@@ -1,12 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Ledger.Domain - nucleo do dominio (ADR-001 / ADR-002).
+    Ledger.Domain — núcleo do domínio.
 
-    REGRA: este projeto nao tem NENHUMA PackageReference e NENHUMA
-    ProjectReference. Dependencia zero e proposital: o dominio nao conhece
-    banco, HTTP, serializacao nem framework. Qualquer linha adicionada aqui
-    quebra Ledger.Architecture.Tests de proposito.
+    REGRA: este projeto não tem NENHUMA PackageReference e NENHUMA
+    ProjectReference. Dependência zero é proposital — o domínio não conhece
+    banco, HTTP, serialização nem framework. Qualquer linha adicionada aqui
+    quebra Ledger.Architecture.Tests, de propósito.
+
+    Ver docs/adr/0001-monolito-modular.md e
+    docs/adr/0002-ledger-append-only.md.
   -->
 
   <PropertyGroup>

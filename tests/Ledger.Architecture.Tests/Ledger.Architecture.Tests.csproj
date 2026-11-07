@@ -1,11 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Testes de arquitetura: travam as fronteiras de camada do ADR-001.
+    Testes de arquitetura: travam as fronteiras de camada do ADR-0001 e proíbem
+    ponto flutuante binário nas camadas de negócio.
 
-    Sem isto, "monolito modular" degrada para "monolito" em poucos sprints,
-    porque nada impede um using conveniente. Com isto, a erosao quebra o build.
-    E tambem o que torna a extracao de um servico mecanica no futuro.
+    Sem isto, "monólito modular" degrada para "monólito" em poucas sprints,
+    porque nada impede um using conveniente. Com isto, a erosão quebra o build
+    no dia em que acontece — e é também o que torna a extração de um serviço
+    mecânica no futuro.
   -->
 
   <PropertyGroup>

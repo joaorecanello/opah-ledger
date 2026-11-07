@@ -5,14 +5,14 @@ using NetArchTest.Rules;
 namespace Ledger.Architecture.Tests;
 
 /// <summary>
-/// Trava as fronteiras de camada do ADR-001 (monolito modular).
+/// Trava as fronteiras de camada do ADR-0001 (monólito modular).
 /// </summary>
 /// <remarks>
-/// A tese do ADR-001 e que microsservicos nao se justificam aqui, mas que as
-/// fronteiras de modulo precisam ser reais para que a extracao de um servico
-/// seja mecanica no dia em que houver razao para ela. "Reais" significa
-/// verificadas no build: sem isto, um <c>using</c> conveniente corroi o
-/// desenho em poucas sprints e ninguem percebe ate a extracao ficar caro.
+/// A tese do ADR-0001 é que microsserviços não se justificam aqui, mas que as
+/// fronteiras de módulo precisam ser reais para que a extração de um serviço
+/// seja mecânica no dia em que houver razão para ela. "Reais" significa
+/// verificadas no build: sem isto, um <c>using</c> conveniente corrói o desenho
+/// em poucas sprints e ninguém percebe até a extração ficar caro.
 /// </remarks>
 public sealed class LayeringTests
 {
@@ -35,8 +35,9 @@ public sealed class LayeringTests
     [Fact]
     public void Dominio_nao_depende_de_infraestrutura_tecnica()
     {
-        // O dominio nao conhece banco, HTTP, serializacao nem DI. Se precisar,
-        // o conceito esta na camada errada.
+        // O domínio não conhece banco, HTTP, serialização nem injeção de
+        // dependência. Se um conceito precisa de algum deles, está na camada
+        // errada.
         var result = Types.InAssembly(DomainAssembly.Reference)
             .ShouldNot()
             .HaveDependencyOnAny(
@@ -55,7 +56,7 @@ public sealed class LayeringTests
     [Fact]
     public void Casos_de_uso_nao_dependem_de_infraestrutura_nem_de_hosts()
     {
-        // Inversao de dependencia: Application declara as portas,
+        // Inversão de dependência: Application declara as portas,
         // Infrastructure as implementa. A seta nunca aponta de volta.
         var result = Types.InAssembly(ApplicationAssembly.Reference)
             .ShouldNot()
@@ -82,9 +83,9 @@ public sealed class LayeringTests
     [Fact]
     public void Dominio_nao_referencia_nenhum_pacote_externo()
     {
-        // Complementa as regras acima: NetArchTest olha dependencia entre
-        // tipos; isto olha o grafo de assemblies. Pega o caso de alguem
-        // adicionar uma PackageReference ao dominio "so para resolver rapido".
+        // Complementa as regras acima: o NetArchTest olha dependência entre
+        // tipos; isto olha o grafo de assemblies. Pega o caso de alguém
+        // adicionar uma PackageReference ao domínio "só para resolver rápido".
         var externas = DomainAssembly.Reference
             .GetReferencedAssemblies()
             .Select(a => a.Name ?? string.Empty)
@@ -95,7 +96,7 @@ public sealed class LayeringTests
             .ToArray();
 
         externas.ShouldBeEmpty(
-            $"Ledger.Domain deve ter dependencia zero. Encontrado: {string.Join(", ", externas)}");
+            $"Ledger.Domain deve ter dependência zero. Encontrado: {string.Join(", ", externas)}");
     }
 
     private static string Describe(TestResult result)

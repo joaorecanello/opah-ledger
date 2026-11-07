@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Ledger.Application - casos de uso e portas (interfaces).
+    Ledger.Application — casos de uso e portas (interfaces).
 
-    Depende do dominio e de mais nada. As implementacoes das portas
-    (repositorios, relogio, unit of work) vivem em Ledger.Infrastructure,
-    que depende desta camada e nunca o contrario (inversao de dependencia).
+    Depende do domínio e de mais nada. As implementações das portas
+    (repositórios, relógio, unit of work) vivem em Ledger.Infrastructure, que
+    depende desta camada e nunca o contrário: inversão de dependência.
   -->
 
   <PropertyGroup>

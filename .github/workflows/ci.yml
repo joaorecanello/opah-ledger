@@ -1,10 +1,12 @@
 # CI do opah-ledger.
 #
-# Proposito principal: provar publicamente, em maquina limpa, que o requisito
-# obrigatorio "codigo fonte deve compilar sem erros e warnings" esta atendido.
-# Esse requisito e eliminatorio no desafio e e o mais facil de violar por
-# acidente (um SDK diferente, um analisador novo, um nullable esquecido).
-# Deixar a verificacao para a revisao manual na vespera e o pior momento.
+# Propósito principal: provar publicamente, em máquina limpa, que o requisito
+# obrigatório "código fonte deve compilar sem erros e warnings" está atendido.
+#
+# Esse requisito é eliminatório no desafio e é o mais fácil de violar por
+# acidente — um SDK diferente, um analisador novo, um nullable esquecido.
+# Deixar a verificação para a revisão manual na véspera é o pior momento
+# possível, porque é quando o custo de errar é máximo.
 
 name: ci
 
@@ -31,7 +33,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Instalar .NET SDK (versao do global.json)
+      - name: Instalar .NET SDK (versão do global.json)
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
@@ -39,17 +41,18 @@ jobs:
       - name: Restore
         run: dotnet restore
 
-      # Estilo de codigo e verificado separadamente porque nem toda regra IDE
-      # do .editorconfig e reportada por "dotnet build", mesmo com
+      # Estilo de código é verificado separadamente porque nem toda regra IDE
+      # do .editorconfig é reportada por "dotnet build", mesmo com
       # EnforceCodeStyleInBuild. Sem este passo, build local e CI poderiam
-      # discordar sobre o que e codigo valido.
-      - name: Verificar formatacao e estilo
+      # discordar sobre o que é código válido — e isso foi descoberto na
+      # prática, não previsto.
+      - name: Verificar formatação e estilo
         run: dotnet format --verify-no-changes --verbosity minimal
 
-      # -warnaserror e redundante com TreatWarningsAsErrors do
-      # Directory.Build.props, e esta aqui de proposito: se alguem relaxar a
+      # -warnaserror é redundante com o TreatWarningsAsErrors do
+      # Directory.Build.props, e está aqui de propósito: se alguém relaxar a
       # propriedade no csproj, o CI continua barrando.
-      - name: Build (Release, warnings sao erros)
+      - name: Build (Release, warnings são erros)
         run: dotnet build --no-restore --configuration Release -warnaserror
 
       - name: Testes

@@ -1,23 +1,24 @@
 <Project>
 
   <!--
-    Central Package Management: todas as versoes de pacote vivem aqui.
-    Os .csproj declaram apenas o Include, nunca a Version.
+    Central Package Management: todas as versões de pacote vivem aqui, e os
+    .csproj declaram apenas o Include, nunca a Version.
 
-    Razao: num repositorio com 9 projetos, versao divergente do mesmo pacote
-    entre projetos e fonte classica de bug que so aparece em runtime. Aqui a
-    divergencia e impossivel por construcao.
+    Razão: num repositório com vários projetos, versão divergente do mesmo
+    pacote entre eles é fonte clássica de bug que só aparece em runtime. Aqui a
+    divergência é impossível por construção.
 
-    Pacotes sao adicionados conforme as etapas do plano os exigem (EF Core em
-    E05, Serilog/OpenTelemetry em E12, Testcontainers em E06, etc.). A lista
-    abaixo contem apenas o que o codigo de fato usa hoje.
+    Pacotes entram conforme o código passa a usá-los — EF Core na persistência,
+    Serilog e OpenTelemetry na observabilidade, Testcontainers nos testes de
+    integração. A lista abaixo contém apenas o que o código de fato usa hoje:
+    dependência declarada e não usada é dívida sem contrapartida.
   -->
 
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 
-  <ItemGroup Label="ASP.NET Core / Hosting">
+  <ItemGroup Label="ASP.NET Core e Hosting">
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.13" />
   </ItemGroup>
@@ -29,20 +30,24 @@
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
 
     <!--
-      Sobe a API em memoria (WebApplicationFactory) sem porta, sem Docker e
-      sem processo externo. Versao casada com o runtime ASP.NET Core 10.0.13.
+      Sobe a API em memória com WebApplicationFactory: sem porta, sem Docker e
+      sem processo externo. Versão casada com o runtime ASP.NET Core 10.0.13.
     -->
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
 
     <!--
-      Shouldly (BSD-3) em lugar de FluentAssertions: a partir da v8 o
-      FluentAssertions passou a exigir licenca paga para uso comercial.
-      Num codigo que seria entregue a um banco, isso e risco juridico, nao
-      preferencia de estilo. Ver docs/adr/0011-biblioteca-de-assercao.md.
+      Shouldly (BSD-3) em lugar de FluentAssertions: a partir da v8, o
+      FluentAssertions passou a exigir licença paga para uso comercial. Num
+      código que seria entregue a um banco isso é passivo jurídico, não
+      preferência de estilo.
+      Ver docs/adr/0011-biblioteca-de-assercao.md.
     -->
     <PackageVersion Include="Shouldly" Version="4.3.0" />
 
-    <!-- Testes de arquitetura: protegem as fronteiras de camada do ADR-001. -->
+    <!--
+      Testes de arquitetura: protegem as fronteiras de camada do ADR-0001 da
+      erosão por "using conveniente".
+    -->
     <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
   </ItemGroup>
 

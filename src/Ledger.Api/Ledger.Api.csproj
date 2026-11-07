@@ -1,9 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <!--
-    Ledger.Api - host HTTP. Processo separado do Worker de proposito (ADR-001):
-    trafego sincrono com latencia previsivel nao deve competir por thread pool
-    com job de consolidacao em lote.
+    Ledger.Api — host HTTP.
+
+    Processo separado do Worker de propósito: tráfego síncrono com latência
+    previsível não deve competir por thread pool com job de consolidação em
+    lote. Ver docs/adr/0001-monolito-modular.md.
   -->
 
   <PropertyGroup>

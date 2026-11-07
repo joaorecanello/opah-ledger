@@ -3,13 +3,13 @@ using System.Net;
 namespace Ledger.Integration.Tests;
 
 /// <summary>
-/// Verifica que a estrutura minima executavel (E03) de fato executa.
+/// Verifica que a estrutura mínima executável de fato executa.
 /// </summary>
 /// <remarks>
-/// Um scaffold que compila mas nao sobe nao e um scaffold. Este teste falha
-/// cedo em erro de composicao do host (DI mal registrada, middleware em ordem
-/// invalida, configuracao ausente) - a classe de erro que, sem ele, so apareceria
-/// ao rodar a aplicacao a mao.
+/// Um projeto que compila mas não sobe não está pronto. Estes testes falham
+/// cedo em erro de composição do host — injeção de dependência mal registrada,
+/// middleware em ordem inválida, configuração ausente —, que é a classe de erro
+/// que, sem eles, só apareceria ao rodar a aplicação à mão.
 /// </remarks>
 public sealed class HostSmokeTests(LedgerApiFactory factory) : IClassFixture<LedgerApiFactory>
 {
@@ -26,9 +26,9 @@ public sealed class HostSmokeTests(LedgerApiFactory factory) : IClassFixture<Led
     [Fact]
     public async Task Rota_inexistente_responde_problem_details_e_nao_html()
     {
-        // RFC 9457 vale para o pipeline inteiro, nao so para os handlers que
-        // eu escrevo. Garante que o cliente nunca receba pagina de erro HTML
-        // onde espera JSON.
+        // RFC 9457 vale para o pipeline inteiro, não só para os handlers
+        // escritos à mão. Garante que o cliente nunca receba página de erro
+        // HTML onde espera JSON.
         using var client = factory.CreateClient();
 
         using var response = await client.GetAsync(new Uri("/rota-que-nao-existe", UriKind.Relative));

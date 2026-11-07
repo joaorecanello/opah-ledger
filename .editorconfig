@@ -1,6 +1,6 @@
-# Padrao de codigo do projeto. Combinado com EnforceCodeStyleInBuild +
-# TreatWarningsAsErrors (Directory.Build.props), isto e verificado no build,
-# nao sugerido na IDE.
+# Padrão de código do projeto. Combinado com EnforceCodeStyleInBuild e
+# TreatWarningsAsErrors (Directory.Build.props), isto é verificado no build,
+# não apenas sugerido na IDE.
 
 root = true
 
@@ -31,7 +31,7 @@ dotnet_sort_system_directives_first = true
 dotnet_separate_import_directive_groups = false
 csharp_using_directive_placement = outside_namespace:warning
 
-# namespace em uma linha (C# 10+)
+# namespace em uma linha
 csharp_style_namespace_declarations = file_scoped:warning
 
 # this.
@@ -40,7 +40,7 @@ dotnet_style_qualification_for_property = false:warning
 dotnet_style_qualification_for_method = false:warning
 dotnet_style_qualification_for_event = false:warning
 
-# tipos de linguagem (int em vez de Int32)
+# tipos de linguagem: int em vez de Int32
 dotnet_style_predefined_type_for_locals_parameters_members = true:warning
 dotnet_style_predefined_type_for_member_access = true:warning
 
@@ -49,7 +49,7 @@ csharp_style_var_for_built_in_types = false:silent
 csharp_style_var_when_type_is_apparent = true:silent
 csharp_style_var_elsewhere = false:silent
 
-# expressoes modernas
+# expressões modernas
 csharp_style_expression_bodied_methods = when_on_single_line:silent
 csharp_style_expression_bodied_properties = true:silent
 csharp_style_expression_bodied_accessors = true:silent
@@ -59,7 +59,8 @@ csharp_style_throw_expression = true:suggestion
 csharp_prefer_braces = true:warning
 csharp_prefer_simple_using_statement = true:suggestion
 
-# imutabilidade: relevante num ledger append-only (ADR-002)
+# Imutabilidade. Relevante aqui mais que de hábito: o ledger é append-only e
+# movimentação é fato imutável. Ver docs/adr/0002-ledger-append-only.md.
 dotnet_style_readonly_field = true:warning
 csharp_prefer_static_local_function = true:suggestion
 csharp_style_prefer_readonly_struct = true:suggestion
@@ -69,7 +70,7 @@ csharp_style_conditional_delegate_call = true:warning
 dotnet_style_coalesce_expression = true:warning
 dotnet_style_null_propagation = true:warning
 
-# chaves e espacamento
+# chaves e espaçamento
 csharp_new_line_before_open_brace = all
 csharp_new_line_before_else = true
 csharp_new_line_before_catch = true
@@ -89,10 +90,10 @@ dotnet_naming_symbols.interface_symbols.applicable_kinds = interface
 dotnet_naming_style.prefix_i_pascal.required_prefix = I
 dotnet_naming_style.prefix_i_pascal.capitalization = pascal_case
 
-# As regras de nomenclatura sao avaliadas na ordem em que aparecem e a
-# primeira que casa vence. Logo as mais especificas (const, static readonly)
-# vem ANTES da regra geral de campo privado, senao ela as captura primeiro e
-# passa a exigir "_" onde a convencao C# pede PascalCase.
+# As regras de nomenclatura são avaliadas na ordem em que aparecem, e a
+# primeira que casa vence. Logo as mais específicas (const, static readonly)
+# vêm ANTES da regra geral de campo privado — senão ela as captura primeiro e
+# passa a exigir "_" onde a convenção C# pede PascalCase.
 
 dotnet_naming_rule.const_fields_pascal.severity = warning
 dotnet_naming_rule.const_fields_pascal.symbols = const_field_symbols
@@ -128,12 +129,12 @@ dotnet_naming_style.pascal.capitalization = pascal_case
 # ---------------------------------------------------------------------------
 [tests/**/*.cs]
 
-# CA1707: nomes de teste usam underscore de proposito
-# (Metodo_Cenario_ResultadoEsperado) por legibilidade do relatorio de falha.
+# CA1707: nomes de teste usam underscore de propósito
+# (Metodo_Cenario_ResultadoEsperado), por legibilidade do relatório de falha.
 dotnet_diagnostic.CA1707.severity = none
 
-# CA1062: validacao de argumento publico nao se aplica a metodo de teste.
+# CA1062: validação de argumento público não se aplica a método de teste.
 dotnet_diagnostic.CA1062.severity = none
 
-# CA1515: tipos de teste precisam ser publicos para o runner descobri-los.
+# CA1515: tipos de teste precisam ser públicos para o runner descobri-los.
 dotnet_diagnostic.CA1515.severity = none

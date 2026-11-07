@@ -1,13 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Testes de integracao com PostgreSQL real via Testcontainers (E06).
-    Banco em memoria nao reproduz unique constraint sob concorrencia, logo o
-    teste de idempotencia seria falso-positivo.
+    Testes de integração.
 
-    Estes testes detectam a ausencia de Docker e sao ignorados com mensagem
-    explicita, para que "dotnet test" nunca falhe por ambiente na maquina do
-    avaliador (requisito obrigatorio: README que roda localmente).
+    Hoje: a API em memória, via WebApplicationFactory.
+    Depois: PostgreSQL real, via Testcontainers — banco em memória não reproduz
+    unique constraint sob concorrência, logo o teste de idempotência passaria
+    sem provar nada, que é falso-positivo no cenário onde mais preciso de
+    certeza. Ver docs/testes.md.
+
+    Os testes que dependerem de Docker detectam a ausência dele e são ignorados
+    com mensagem explícita, para que "dotnet test" nunca falhe por ambiente na
+    máquina de quem avalia — requisito obrigatório de README que roda
+    localmente, não conveniência.
   -->
 
   <PropertyGroup>

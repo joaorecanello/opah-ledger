@@ -6,20 +6,22 @@ using Ledger.Domain;
 namespace Ledger.Architecture.Tests;
 
 /// <summary>
-/// Proibe ponto flutuante binario no dominio e nos casos de uso.
+/// Proíbe ponto flutuante binário no domínio e nos casos de uso.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <c>double</c> e <c>float</c> sao base 2 e nao representam 0,1 exatamente.
-/// Somar centavos acumula erro, e num razao contabil erro acumulado e dinheiro
-/// que nao fecha. O tipo monetario do projeto e <c>decimal</c> (base 10),
-/// mapeado para <c>numeric(19,4)</c> no PostgreSQL (ADR-005).
+/// <c>double</c> e <c>float</c> são base 2 e não representam 0,1 exatamente.
+/// Somar centavos acumula erro, e num razão contábil erro acumulado é dinheiro
+/// que não fecha. O tipo monetário do projeto é <c>decimal</c> (base 10),
+/// mapeado para <c>numeric(19,4)</c> no PostgreSQL.
+/// Ver docs/adr/0005-persistencia-postgresql.md.
 /// </para>
 /// <para>
-/// Este teste e uma rede, nao uma formalidade: a forma mais provavel de este
-/// bug entrar e alguem escrever <c>var total = 0.0;</c> num calculo auxiliar,
-/// onde nenhuma revisao de codigo repara. Hoje ele passa trivialmente porque
-/// o dominio ainda esta vazio (E04); o valor dele e a partir de E04.
+/// Este teste é uma rede, não uma formalidade: a forma mais provável de o bug
+/// entrar não é alguém declarar <c>double Saldo</c>, é alguém escrever
+/// <c>var total = 0.0;</c> num cálculo auxiliar, onde nenhuma revisão de código
+/// repara. Hoje ele passa trivialmente porque o domínio ainda está vazio; o
+/// valor dele começa quando houver código.
 /// </para>
 /// </remarks>
 public sealed class MonetaryPrecisionTests
@@ -47,8 +49,8 @@ public sealed class MonetaryPrecisionTests
 
         ocorrencias.ShouldBeEmpty(
             $"""
-            {camada} usa ponto flutuante binario em valores que podem ser monetarios.
-            Use decimal. Ocorrencias:
+            {camada} usa ponto flutuante binário em valores que podem ser monetários.
+            Use decimal. Ocorrências:
               {string.Join("\n  ", ocorrencias)}
             """);
     }
@@ -80,7 +82,7 @@ public sealed class MonetaryPrecisionTests
 
                 foreach (var p in metodo.GetParameters().Where(p => Proibido(p.ParameterType)))
                 {
-                    yield return $"{tipo.FullName}.{metodo.Name} (parametro {p.Name}: {p.ParameterType.Name})";
+                    yield return $"{tipo.FullName}.{metodo.Name} (parâmetro {p.Name}: {p.ParameterType.Name})";
                 }
             }
         }

@@ -1,8 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <!--
-    Ledger.Worker - processamento em background: consolidacao de snapshots
-    (E10), reconciliacao ledger<->snapshot e despacho de outbox (E15).
+    Ledger.Worker — processamento em background: consolidação de snapshots,
+    reconciliação ledger/snapshot e despacho de outbox.
+
+    Não está no caminho crítico de nenhuma operação: se ele estiver parado, a
+    escrita funciona normalmente e a consulta de saldo cai no cálculo direto —
+    mais lenta, igualmente correta.
+    Ver docs/adr/0004-snapshot-de-saldo.md.
   -->
 
   <PropertyGroup>

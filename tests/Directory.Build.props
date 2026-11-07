@@ -1,9 +1,12 @@
 <Project>
 
   <!--
-    Props comuns a todos os projetos de teste. Importa explicitamente o
-    Directory.Build.props da raiz, porque o MSBuild para na primeira
-    ocorrencia subindo a arvore de diretorios.
+    Props comuns a todos os projetos de teste, para que cada .csproj de teste
+    contenha apenas o que é específico dele.
+
+    Importa explicitamente o Directory.Build.props da raiz, porque o MSBuild
+    para na primeira ocorrência que encontra subindo a árvore de diretórios —
+    sem este Import, os projetos de teste perderiam toda a higiene de build.
   -->
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
 
@@ -12,7 +15,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <ItemGroup Label="Infra de teste comum a todos os projetos de teste">
+  <ItemGroup Label="Infraestrutura de teste comum">
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="Shouldly" />
