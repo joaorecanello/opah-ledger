@@ -40,7 +40,7 @@ decisão arquitetural**, em vez de apenas exercitar código.
 
 ## O que já roda hoje
 
-180 testes: 87 de domínio, 33 de aplicação, 7 de arquitetura, 53 de integração.
+200 testes: 87 de domínio, 33 de aplicação, 7 de arquitetura, 73 de integração.
 
 Numa máquina sem Docker e sem `LEDGER_TEST_DB`, os testes que dependem de banco
 são **ignorados com mensagem explícita** e `dotnet test` sai com código 0.
@@ -124,7 +124,7 @@ tentativa duplicada não grava nada. O que ele não reproduz é concorrência re
 e é por isso que esse cenário vive nos testes de integração. Um falso que
 fingisse reproduzi-la daria falso-positivo no cenário de maior risco do sistema.
 
-### Testes de integração (53)
+### Testes de integração (73)
 
 Contra PostgreSQL real. Dois deles são smoke do host HTTP e não precisam de
 banco; os outros 25 precisam.
@@ -137,6 +137,7 @@ banco; os outros 25 precisam.
 | `PersistenceRoundTripTests` | precisão decimal na ida e volta, soma de mil centavos pelo próprio banco, instante com fuso de origem, ida e volta completa do domínio, e o esquema recusando valor não positivo e conta inexistente |
 | `RegisterMovementIntegrationTests` | o caso de uso contra o banco: registro, replay, conflito, 20 retries simultâneos, e a reação do adaptador a uma violação de constraint que **não** é de idempotência |
 | `GetBalanceIntegrationTests` | saldo em três instantes, corte inclusivo, precisão em 2.000 somas de fração de centavo, isolamento entre contas, **equivalência entre a soma do SQL e o cálculo do domínio**, e a verificação de que a soma acontece no banco |
+| `LedgerApiTests` | a API de ponta a ponta: `201` com `Location` que responde, `200` de replay com corpo **byte a byte** igual ao original, `409`, `400` com o código do domínio, `404`, o fluxo completo, e pedido malformado |
 | `SystemClockTests` | o relógio não devolve fração de microssegundo, e é sempre UTC |
 
 Três merecem destaque:
@@ -174,6 +175,15 @@ Três merecem destaque:
   o resultado. Se o EF trouxesse as linhas para somar na aplicação, o número
   seria o mesmo e o desempenho seria o do sistema que este desenho existe para
   substituir — o defeito passaria por todos os outros testes.
+- **`Repeticao_identica_devolve_200_com_o_mesmo_corpo`** compara os dois corpos
+  **byte a byte**. Foi ele que encontrou o defeito do ADR-0015: o `201` era
+  montado a partir do pedido e o `200` lido do banco, e os dois discordavam em
+  `150.75` contra `150.7500`. "Resposta original" não é "resposta equivalente".
+- **`AsOf_com_sinal_de_mais_nao_codificado_devolve_400_e_nao_500`** e
+  **`Pedido_malformado_devolve_4xx_em_problem_details_e_nunca_500`** guardam o
+  outro defeito do ADR-0015. O segundo testa o **requisito** e não o mecanismo —
+  e foi essa escolha que mostrou, por medição, que a minha primeira correção
+  havia virado código morto.
 
 Que as **migrations aplicam** não tem teste próprio: o fixture as aplica contra o
 banco em toda execução da suíte. Verificação de graça e sempre, em lugar de um
@@ -233,6 +243,20 @@ mensagem explícita.
 | Código gerado (migrations, OpenAPI) | testar gerador de terceiro não encontra bug meu |
 | Mapeamento trivial de DTO | o compilador já verifica; teste aqui só duplica a declaração |
 | Percentual de cobertura como meta | ver o primeiro parágrafo deste documento |
+
+## A lição desta suíte
+
+Os dois defeitos mais instrutivos do projeto **não** foram encontrados por
+testes. Apareceram ao rodar a aplicação à mão, com a suíte inteira verde:
+
+- o corpo do `201` discordava do corpo do replay, porque um era montado do
+  pedido e o outro lido do banco;
+- `?asOf=...+00:00` sem codificar devolvia `500`, porque os testes montavam a
+  URL em código e nunca produziam uma malformada.
+
+O padrão é o mesmo: **testes exercitam o caminho que quem os escreveu
+imaginou.** Os dois viraram teste depois, e é por isso que validar num ambiente
+limpo é etapa do plano e não formalidade.
 
 ## Critérios de aceitação da entrega
 

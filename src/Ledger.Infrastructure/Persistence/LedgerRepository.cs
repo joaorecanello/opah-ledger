@@ -102,6 +102,26 @@ public sealed class LedgerRepository(LedgerDbContext context) : ILedgerRepositor
     }
 
     /// <inheritdoc/>
+    public async Task<Movement?> FindMovementAsync(
+        MovementId movementId,
+        CancellationToken cancellationToken)
+    {
+        var registro = await context.Movements
+            .AsNoTracking()
+            .SingleOrDefaultAsync(m => m.Id == movementId.Value, cancellationToken)
+            .ConfigureAwait(false);
+
+        return registro is null ? null : PersistenceMapper.ToDomain(registro);
+    }
+
+    /// <inheritdoc/>
+    public async Task AddAccountAsync(Account account, CancellationToken cancellationToken)
+    {
+        context.Accounts.Add(PersistenceMapper.ToRecord(account));
+        await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
     public async Task<LedgerSum> SumUpToAsync(
         AccountId accountId,
         DateTimeOffset asOf,

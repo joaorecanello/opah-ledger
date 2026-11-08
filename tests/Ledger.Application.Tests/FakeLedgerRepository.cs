@@ -53,6 +53,20 @@ internal sealed class FakeLedgerRepository : ILedgerRepository
     public Task<Account?> FindAccountAsync(AccountId accountId, CancellationToken cancellationToken) =>
         Task.FromResult(_contas.TryGetValue(accountId.Value, out var conta) ? conta : null);
 
+    public Task<Movement?> FindMovementAsync(
+        MovementId movementId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(
+            _movimentacoes.TryGetValue(movementId.Value, out var movimentacao)
+                ? movimentacao
+                : null);
+
+    public Task AddAccountAsync(Account account, CancellationToken cancellationToken)
+    {
+        Adicionar(account);
+        return Task.CompletedTask;
+    }
+
     public Task<LedgerWriteOutcome> TryRegisterAsync(
         Movement movement,
         string requestFingerprint,

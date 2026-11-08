@@ -25,6 +25,11 @@ public readonly record struct Money : IComparable<Money>
     /// <summary>Número máximo de casas decimais aceito.</summary>
     public const int MaxScale = 4;
 
+    /// <summary>
+    /// Zero na escala canônica, usado para padronizar a representação.
+    /// </summary>
+    private const decimal CanonicalScale = 0.0000m;
+
     private Money(decimal amount, Currency currency)
     {
         Amount = amount;
@@ -69,7 +74,19 @@ public readonly record struct Money : IComparable<Money>
                 + $"Recebido: {amount} com {amount.Scale}.");
         }
 
-        return new Money(amount, currency);
+        // Normaliza para a escala canônica. Não é arredondamento — a escala
+        // excessiva já foi recusada acima —, é padding: 150,75 e 150,7500 são a
+        // mesma quantia, e o tipo passa a ter uma representação só.
+        //
+        // Isso importa porque o PostgreSQL devolve numeric(19,4) sempre com
+        // quatro casas. Sem normalizar aqui, o valor em memória e o valor lido
+        // do banco serializariam diferente em JSON — "150.75" e "150.7500" —, e
+        // a resposta de um registro discordaria da resposta do replay do mesmo
+        // lançamento.
+        //
+        // A soma com zero na escala alvo é o jeito de padronizar: na aritmética
+        // decimal, a escala do resultado é a maior das duas operandas.
+        return new Money(amount + CanonicalScale, currency);
     }
 
     /// <summary>Cria o valor zero na moeda informada.</summary>

@@ -81,6 +81,22 @@ public interface ILedgerRepository
     /// <summary>Busca a conta, ou <c>null</c> se ela não existe.</summary>
     Task<Account?> FindAccountAsync(AccountId accountId, CancellationToken cancellationToken);
 
+    /// <summary>Busca uma movimentação pelo identificador, ou <c>null</c>.</summary>
+    /// <remarks>
+    /// Leitura pontual, sem regra. Existe para que o <c>201 Created</c> do
+    /// registro possa apontar para um recurso que de fato responde — um
+    /// <c>Location</c> para endpoint inexistente é contrato quebrado.
+    /// </remarks>
+    Task<Movement?> FindMovementAsync(MovementId movementId, CancellationToken cancellationToken);
+
+    /// <summary>Persiste uma conta nova.</summary>
+    /// <remarks>
+    /// O cadastro de contas pertence a outro contexto delimitado
+    /// ([PR-07](../../../docs/premissas.md)); isto existe para que o projeto seja
+    /// executável e testável sem depender desse outro sistema.
+    /// </remarks>
+    Task AddAccountAsync(Account account, CancellationToken cancellationToken);
+
     /// <summary>
     /// Grava a movimentação e a chave de idempotência atomicamente.
     /// </summary>

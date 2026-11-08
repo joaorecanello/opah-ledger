@@ -27,6 +27,7 @@ que seria essencial documentar para que outra pessoa do time evolua a solução.
 | [0012](0012-idempotencia-em-tabela-propria.md) | Chave de idempotência em tabela própria, não em coluna de `movements` | aceito |
 | [0013](0013-modelo-de-persistencia-separado.md) | Modelo de persistência separado do modelo de domínio | aceito |
 | [0014](0014-xunit-v3-e-testing-platform.md) | xUnit v3 e Microsoft.Testing.Platform | aceito |
+| [0015](0015-contrato-http.md) | Contrato HTTP: desfecho para status, ProblemDetails e validação | aceito |
 
 ## Por onde começar
 
@@ -62,6 +63,10 @@ decisão e a ferramenta:
 - **[0014](0014-xunit-v3-e-testing-platform.md)** documenta uma descoberta sobre
   a plataforma de testes, e uma lição: um teste que verifica uma constante não
   verifica um comportamento.
+- **[0015](0015-contrato-http.md)** registra o contrato da API e dois defeitos
+  que só apareceram ao exercitar a aplicação à mão, com 194 testes verdes — mais
+  a medição que me fez remover a minha primeira correção por ter virado código
+  morto.
 
 ## Numeração
 

@@ -169,6 +169,7 @@ public sealed class MoneyTests
     [Fact]
     public void Texto_mostra_moeda_e_quantia()
     {
-        Money.Of(1234.56m, Brl).ToString().ShouldBe("BRL 1234.56");
+        // A escala canônica aparece no texto: o tipo tem uma representação só.
+        Money.Of(1234.56m, Brl).ToString().ShouldBe("BRL 1234.5600");
     }
 }

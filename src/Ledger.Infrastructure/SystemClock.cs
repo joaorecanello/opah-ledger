@@ -33,7 +33,7 @@ namespace Ledger.Infrastructure;
 public sealed class SystemClock : IClock
 {
     /// <summary>Ticks por microssegundo (1 tick = 100 ns).</summary>
-    public const long TicksPerMicrosecond = 10L;
+    public const long TicksPerMicrosecond = LedgerTimePolicy.TicksPerMicrosecond;
 
     /// <inheritdoc/>
     public DateTimeOffset UtcNow => Truncate(DateTimeOffset.UtcNow);
@@ -42,6 +42,11 @@ public sealed class SystemClock : IClock
     /// Descarta a fração de microssegundo, para que o valor sobreviva à ida e
     /// volta ao PostgreSQL sem mudar.
     /// </summary>
+    /// <remarks>
+    /// Delega à política compartilhada: o mesmo truncamento se aplica ao
+    /// instante de negócio que vem do pedido, e ter duas implementações da
+    /// mesma regra seria convite a elas divergirem.
+    /// </remarks>
     public static DateTimeOffset Truncate(DateTimeOffset instant) =>
-        new(instant.Ticks - (instant.Ticks % TicksPerMicrosecond), instant.Offset);
+        LedgerTimePolicy.Truncate(instant);
 }

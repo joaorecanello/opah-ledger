@@ -68,12 +68,25 @@ public enum RegisterMovementStatus
 /// <param name="PostedAt">Instante do registro, quando houver um.</param>
 /// <param name="ErrorCode">Invariante violada, quando o pedido foi recusado.</param>
 /// <param name="Detail">Explicação legível, quando houver.</param>
+/// <param name="Movement">
+/// A movimentação criada, presente apenas em
+/// <see cref="RegisterMovementStatus.Registered"/>.
+/// <para>
+/// Existe para que a resposta seja montada a partir do que foi <b>gravado</b>, e
+/// não a partir do pedido. Os dois não são a mesma coisa: o pedido pode trazer
+/// 150,75 e instante com precisão de 100 ns, e o razão guarda 150,7500 e
+/// microssegundos. Montar a resposta do pedido faria o registro afirmar valores
+/// que o razão não tem — e faria a resposta do replay, lida do banco,
+/// discordar da resposta original.
+/// </para>
+/// </param>
 public sealed record RegisterMovementResult(
     RegisterMovementStatus Status,
     Guid? MovementId = null,
     DateTimeOffset? PostedAt = null,
     DomainErrorCode? ErrorCode = null,
-    string? Detail = null);
+    string? Detail = null,
+    Movement? Movement = null);
 
 /// <summary>
 /// Política temporal e de retenção do registro de movimentação.
@@ -161,7 +174,12 @@ public sealed class RegisterMovementHandler(
             return Recusar(erro);
         }
 
-        if (ValidarJanelaTemporal(command.OccurredAt, agora) is { } problemaTemporal)
+        // Trunca o instante de negócio à precisão que o razão guarda. Sem isso,
+        // a resposta afirmaria nanossegundos que o banco descartou, e a leitura
+        // posterior do mesmo lançamento devolveria outro valor.
+        var ocorridaEm = LedgerTimePolicy.Truncate(command.OccurredAt);
+
+        if (ValidarJanelaTemporal(ocorridaEm, agora) is { } problemaTemporal)
         {
             return problemaTemporal;
         }
@@ -183,7 +201,7 @@ public sealed class RegisterMovementHandler(
             movimentacao = conta.Register(
                 command.Type,
                 valor,
-                command.OccurredAt,
+                ocorridaEm,
                 agora,
                 chave,
                 command.CorrelationId,
@@ -207,7 +225,8 @@ public sealed class RegisterMovementHandler(
             return new RegisterMovementResult(
                 RegisterMovementStatus.Registered,
                 movimentacao.Id.Value,
-                movimentacao.PostedAt);
+                movimentacao.PostedAt,
+                Movement: movimentacao);
         }
 
         return await ResolverChaveJaUsadaAsync(chave, impressao, cancellationToken)

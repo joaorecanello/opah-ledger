@@ -6,9 +6,9 @@ Razão contábil para movimentações financeiras de clientes de um banco digita
 registra créditos e débitos em contas e responde a posição consolidada de saldo
 em qualquer ponto do tempo.
 
-> **Estado atual: os dois fluxos de negócio funcionando, sem API.** 180 testes,
-> sendo 41 contra PostgreSQL real. Registro idempotente e consulta de posição
-> consolidada estão completos e verificados; falta expô-los por HTTP. A seção
+> **Estado atual: solução demonstrável de ponta a ponta.** Os dois requisitos
+> funcionais do enunciado estão implementados e expostos por HTTP, com 200
+> testes — 61 deles contra PostgreSQL real. A seção
 > [Estado atual](#estado-atual) é explícita sobre o que existe e o que não
 > existe.
 
@@ -76,7 +76,7 @@ Toda no repositório, conforme o requisito obrigatório.
 | [docs/arquitetura.md](docs/arquitetura.md) | diagramas C4 em três níveis e modelo de dados |
 | [docs/fluxos.md](docs/fluxos.md) | sequência dos dois casos de uso, incluindo retry, conflito e movimentação retroativa |
 | [docs/adr/](docs/adr/) | 11 decisões arquiteturais, cada uma com alternativas, trade-offs e gatilho de revisão |
-| [docs/testes.md](docs/testes.md) | estratégia de testes e os 12 cenários críticos por ordem de risco |
+| [docs/testes.md](docs/testes.md) | estratégia de testes, os 12 cenários críticos por ordem de risco, e os dois defeitos que a suíte não pegou |
 
 **Se você tem cinco minutos:** [ADR-0002](docs/adr/0002-ledger-append-only.md) e
 [ADR-0003](docs/adr/0003-idempotencia-como-contrato.md). Todas as outras decisões
@@ -86,9 +86,10 @@ decorrem dessas duas.
 
 - [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0) — qualquer
   versão 10.x serve (o `global.json` usa `rollForward: latestFeature`).
-- **Docker — opcional.** Sem ele, `dotnet test` roda os testes que não dependem
-  de banco e **ignora** os que dependem, com mensagem explícita e código de
-  saída 0. Com ele, os 180 rodam. Verificado nos dois caminhos.
+- **Docker — opcional para os testes, necessário para rodar a API.** Sem ele,
+  `dotnet test` roda os testes que não dependem de banco e **ignora** os que
+  dependem, com mensagem explícita e código de saída 0. Com ele, os 200 rodam.
+  Verificado nos dois caminhos.
 
 Nenhum certificado TLS de desenvolvimento é necessário: localmente a API sobe em
 HTTP puro de propósito. Em produção, o TLS é terminado antes da aplicação.
@@ -140,6 +141,72 @@ Resposta esperada: `{"status":"live"}`
 A especificação OpenAPI fica em `http://localhost:5080/openapi/v1.json` (apenas
 em ambiente de desenvolvimento).
 
+## Exercitando a API
+
+O fluxo abaixo foi executado contra a aplicação rodando, e as respostas são as
+reais. Provisione uma conta:
+
+```bash
+curl -sS -X POST http://localhost:5080/api/v1/accounts -H 'Content-Type: application/json' -d '{"customerId":"2f1b8d4e-0c7a-4a1f-9b3e-5d6c7a8b9c01","currency":"BRL"}'
+```
+
+Registre um crédito. A chave de idempotência é **obrigatória**:
+
+```bash
+curl -sS -i -X POST http://localhost:5080/api/v1/accounts/SUA_CONTA/movements -H 'Content-Type: application/json' -H 'Idempotency-Key: pix-e3012-0001' -d '{"type":"Credit","amount":1500.00,"currency":"BRL","occurredAt":"2026-11-07T13:00:00Z"}'
+```
+
+```
+HTTP/1.1 201 Created
+Location: /api/v1/accounts/01a1bb50-.../movements/01a1bb50-692a-...
+{"movementId":"01a1bb50-692a-...","amount":1500.0000,"currency":"BRL",...}
+```
+
+**Repita o comando exatamente igual.** A resposta é `200` com o corpo idêntico —
+byte a byte — e **nenhuma segunda movimentação é criada**. É o comportamento que
+torna seguro repetir depois de um timeout.
+
+Agora mude só o valor, mantendo a mesma chave:
+
+```bash
+curl -sS -X POST http://localhost:5080/api/v1/accounts/SUA_CONTA/movements -H 'Content-Type: application/json' -H 'Idempotency-Key: pix-e3012-0001' -d '{"type":"Credit","amount":9999.00,"currency":"BRL","occurredAt":"2026-11-07T13:00:00Z"}'
+```
+
+```json
+{"type":"urn:ledger:problem:idempotency-conflict","title":"Conflito de idempotência","status":409,
+ "detail":"A chave de idempotência já foi usada com um conteúdo diferente...","traceId":"00-755e47c8..."}
+```
+
+A mesma chave com conteúdo diferente é **erro do chamador**, não ambiguidade a
+resolver: as duas interpretações possíveis movimentam dinheiro.
+
+Consulte o saldo:
+
+```bash
+curl -sS http://localhost:5080/api/v1/accounts/SUA_CONTA/balance
+```
+
+```json
+{"accountId":"01a1bb54-...","asOf":"2026-11-08T13:23:43.571117+00:00","balance":1099.7500,
+ "currency":"BRL","movementCount":2,"source":"DirectSum","stale":false}
+```
+
+E em um instante do passado — `asOf` é inclusivo e usa o tempo de negócio:
+
+```bash
+curl -sS 'http://localhost:5080/api/v1/accounts/SUA_CONTA/balance?asOf=2026-11-06T13:00:00Z'
+```
+
+> Use o sufixo `Z`. Um deslocamento com `+` precisa ser codificado como `%2B`:
+> um `+` cru na URL é lido como espaço. A API responde `400` com essa instrução
+> em lugar de falhar de forma obscura — foi um defeito real, descrito no
+> [ADR-0015](docs/adr/0015-contrato-http.md).
+
+**Todo erro responde ProblemDetails** (RFC 9457) com `type`, `title`, `status`,
+`detail` e `traceId`. O `type` carrega o código do invariante violado — por
+exemplo `urn:ledger:problem:amount-not-positive` — para que quem integra trate
+cada caso sem interpretar texto livre.
+
 Subir o worker (hoje ele sobe e fica ocioso — nenhum job registrado ainda):
 
 ```bash
@@ -166,15 +233,13 @@ dotnet run --project src/Ledger.Worker
   contra PostgreSQL real com 20 retries simultâneos.
 - **Consulta de posição consolidada:** saldo em qualquer instante, somado no
   banco, com a equivalência contra o cálculo do domínio verificada por teste.
-- 180 testes passando: 87 de domínio, 33 de aplicação, 7 de arquitetura,
-  53 de integração (41 contra PostgreSQL real).
-- Requisitos decompostos, 14 premissas registradas e 14 ADRs escritas.
+- **API REST v1** com OpenAPI, todos os erros em ProblemDetails (RFC 9457) e o
+  `Location` do `201` apontando para um recurso que responde.
+- 200 testes passando: 87 de domínio, 33 de aplicação, 7 de arquitetura,
+  73 de integração (61 contra PostgreSQL real).
+- Requisitos decompostos, 14 premissas registradas e 15 ADRs escritas.
 
 **Não existe ainda:**
-
-- Endpoints HTTP que exponham os dois fluxos. Os desfechos já são decididos
-  pelos casos de uso; falta traduzi-los para status (`201`, `200` no replay,
-  `409`, `404`).
 - Consulta de saldo consolidado.
 - Endpoints de negócio.
 - `docker compose up` de um comando.
@@ -236,9 +301,13 @@ src/
     Abstractions/          IClock, ILedgerRepository, política temporal
     Movements/             RegisterMovement, RequestFingerprint
     Balances/              GetBalance
+    Accounts/              OpenAccount, GetMovement
   Ledger.Infrastructure  adaptadores
     Persistence/           DbContext, records, migrations, mapeamento explícito
   Ledger.Api             host HTTP
+    Contracts/             DTOs de requisição e resposta
+    Endpoints/             rotas v1
+    LedgerProblems         desfecho de negócio para ProblemDetails
   Ledger.Worker          host de background: consolidação, reconciliação, outbox
 tests/
   Ledger.Domain.Tests        invariantes do domínio. Sem banco, sem HTTP, sem Docker
@@ -294,7 +363,7 @@ previsto.
 dotnet test
 ```
 
-180 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
+200 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
 banco em memória não reproduz unique constraint sob concorrência, logo o teste
 de idempotência — o mais importante da suíte — passaria sem provar nada.
 
