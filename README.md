@@ -6,11 +6,11 @@ Razão contábil para movimentações financeiras de clientes de um banco digita
 registra créditos e débitos em contas e responde a posição consolidada de saldo
 em qualquer ponto do tempo.
 
-> **Estado atual: solução demonstrável de ponta a ponta.** Os dois requisitos
-> funcionais do enunciado estão implementados e expostos por HTTP, com 200
-> testes — 61 deles contra PostgreSQL real. A seção
-> [Estado atual](#estado-atual) é explícita sobre o que existe e o que não
-> existe.
+> **Estado atual: solução demonstrável com um comando.** Os dois requisitos
+> funcionais do enunciado estão implementados, expostos por HTTP e empacotados —
+> `docker compose up --build` sobe tudo, sem .NET instalado. 200 testes, 61
+> deles contra PostgreSQL real. A seção [Estado atual](#estado-atual) é
+> explícita sobre o que existe e o que não existe.
 
 ## O problema
 
@@ -82,19 +82,39 @@ Toda no repositório, conforme o requisito obrigatório.
 [ADR-0003](docs/adr/0003-idempotencia-como-contrato.md). Todas as outras decisões
 decorrem dessas duas.
 
-## Pré-requisitos
-
-- [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0) — qualquer
-  versão 10.x serve (o `global.json` usa `rollForward: latestFeature`).
-- **Docker — opcional para os testes, necessário para rodar a API.** Sem ele,
-  `dotnet test` roda os testes que não dependem de banco e **ignora** os que
-  dependem, com mensagem explícita e código de saída 0. Com ele, os 200 rodam.
-  Verificado nos dois caminhos.
-
-Nenhum certificado TLS de desenvolvimento é necessário: localmente a API sobe em
-HTTP puro de propósito. Em produção, o TLS é terminado antes da aplicação.
-
 ## Como rodar
+
+Há dois caminhos. O primeiro **não exige .NET instalado**.
+
+### Com Docker, um comando
+
+```bash
+docker compose up --build
+```
+
+Isso sobe PostgreSQL 18 e a API, espera o banco ficar de fato pronto, aplica as
+migrations e deixa a API respondendo em `http://localhost:5080`. Para conferir:
+
+```bash
+curl http://localhost:5080/health/live
+```
+
+Resposta esperada: `{"status":"live"}`
+
+Verificado a partir de um volume vazio: `docker compose down -v` seguido de
+`docker compose up --build` deixa a aplicação utilizável sem nenhum passo
+manual.
+
+> As migrations são aplicadas no start **aqui**, e não por padrão. É o opt-in
+> explícito que o padrão desligado existe para permitir: em produção, migração é
+> passo do pipeline, porque instâncias subindo juntas disputariam o lock e uma
+> migração que falha derrubaria o processo em lugar de falhar o deploy.
+
+### Com o SDK .NET
+
+Pré-requisito: [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0) —
+qualquer versão 10.x serve, porque o `global.json` usa
+`rollForward: latestFeature`.
 
 ```bash
 dotnet restore
@@ -108,38 +128,41 @@ dotnet build -warnaserror
 dotnet test
 ```
 
-Para rodar também os testes de integração, suba o PostgreSQL:
+Para rodar também os testes de integração é preciso um PostgreSQL. Com Docker
+disponível não há configuração: o Testcontainers sobe e descarta um container
+sozinho, e é assim que o CI roda. **Sem** Docker, os testes que dependem de
+banco são ignorados com mensagem explícita e `dotnet test` sai com código 0 —
+verificado nos dois caminhos.
+
+Subir só o banco, para desenvolver com a API fora do container:
 
 ```bash
-docker compose up -d
+docker compose up -d db
 ```
-
-Com Docker disponível isso não é obrigatório — o Testcontainers sobe e descarta
-um container sozinho, e é assim que o CI roda. O `docker compose` serve a quem
-quer um banco persistente para desenvolver.
-
-Aplicar as migrations nesse banco:
 
 ```bash
 dotnet tool restore && dotnet ef database update --project src/Ledger.Infrastructure --startup-project src/Ledger.Infrastructure
 ```
 
-Subir a API:
-
 ```bash
 dotnet run --project src/Ledger.Api
 ```
 
-A API responde em `http://localhost:5080`. Para conferir:
-
-```bash
-curl http://localhost:5080/health/live
-```
-
-Resposta esperada: `{"status":"live"}`
+A API responde na mesma `http://localhost:5080`, de propósito: uma URL só na
+documentação, independente de como foi iniciada.
 
 A especificação OpenAPI fica em `http://localhost:5080/openapi/v1.json` (apenas
 em ambiente de desenvolvimento).
+
+Subir o worker (hoje ele sobe e fica ocioso — nenhum job registrado ainda; ele
+entra no compose quando tiver trabalho):
+
+```bash
+dotnet run --project src/Ledger.Worker
+```
+
+Nenhum certificado TLS de desenvolvimento é necessário: localmente a API sobe em
+HTTP puro de propósito. Em produção, o TLS é terminado antes da aplicação.
 
 ## Exercitando a API
 
@@ -235,6 +258,9 @@ dotnet run --project src/Ledger.Worker
   banco, com a equivalência contra o cálculo do domínio verificada por teste.
 - **API REST v1** com OpenAPI, todos os erros em ProblemDetails (RFC 9457) e o
   `Location` do `201` apontando para um recurso que responde.
+- **Empacotamento:** `docker compose up --build` sobe banco e API, espera o
+  banco ficar pronto, aplica migrations e deixa a aplicação utilizável.
+  Verificado a partir de volume vazio.
 - 200 testes passando: 87 de domínio, 33 de aplicação, 7 de arquitetura,
   73 de integração (61 contra PostgreSQL real).
 - Requisitos decompostos, 14 premissas registradas e 15 ADRs escritas.
@@ -316,7 +342,8 @@ tests/
   Ledger.Integration.Tests   API em memória e PostgreSQL real via Testcontainers
 docs/
   adr/                       decisões arquiteturais
-docker-compose.yml       PostgreSQL para desenvolvimento
+docker-compose.yml       PostgreSQL e API, um comando
+src/Ledger.Api/Dockerfile  build em dois estágios, usuário sem privilégio
 ```
 
 As setas de dependência apontam `Api`/`Worker` → `Infrastructure` →

@@ -1,18 +1,14 @@
-# PostgreSQL para desenvolvimento e para rodar os testes de integração
-# localmente.
+# Sobe o razão inteiro com um comando:
 #
-# A aplicação ainda não está aqui: ela entra quando houver endpoints de negócio
-# para servir. Hoje este arquivo existe para uma coisa só, e ela é concreta —
-# dar um banco de pé com um comando, para que as migrations e os testes de
-# integração rodem sem instalar PostgreSQL na máquina.
+#   docker compose up --build
 #
-#   docker compose up -d
-#   dotnet ef database update --project src/Ledger.Infrastructure --startup-project src/Ledger.Infrastructure
-#   dotnet test
+# Depois disso a API responde em http://localhost:5080 e o fluxo do README pode
+# ser exercitado sem .NET instalado na máquina.
 #
 # A senha aqui é de desenvolvimento e está em claro de propósito: é um banco
 # descartável em porta local. Credencial de verdade nunca entra em arquivo
-# versionado.
+# versionado — em produção ela vem do gerenciador de segredos do ambiente, pela
+# mesma variável LEDGER_DB.
 
 services:
   db:
@@ -29,18 +25,62 @@ services:
       # o desenvolvimento rode com a mesma configuração de produção.
       POSTGRES_INITDB_ARGS: "--data-checksums"
     ports:
+      # Publicado para que "dotnet ef" e os testes de integração possam usar
+      # este banco de fora do compose.
       - "5432:5432"
     volumes:
-      - ledger-db-data:/var/lib/postgresql/data
+      # Montado em /var/lib/postgresql, NÃO em .../data.
+      #
+      # A imagem oficial do PostgreSQL 18 mudou essa convenção: ela passa a
+      # colocar os dados num subdiretório por versão maior, o que é o que
+      # permite "pg_upgrade --link" sem cruzar fronteira de mount. Um volume
+      # montado direto em .../data é reconhecido como "unused mount" e o
+      # container recusa subir.
+      #
+      # O erro é claro no log e invisível no arquivo: só aparece ao rodar.
+      - ledger-db-data:/var/lib/postgresql
     healthcheck:
       # O "pg_isready" responde antes de o banco aceitar conexão de verdade em
-      # alguns casos; o teste de conexão real evita subir a aplicação contra um
-      # banco que ainda está inicializando.
+      # alguns casos; o teste de conexão real evita subir a API contra um banco
+      # que ainda está inicializando.
       test: ["CMD-SHELL", "pg_isready -U ledger -d ledger && psql -U ledger -d ledger -c 'select 1' > /dev/null"]
       interval: 2s
       timeout: 5s
       retries: 30
       start_period: 5s
+    restart: unless-stopped
+
+  api:
+    build:
+      # Contexto é a raiz do repositório: o projeto depende de
+      # Directory.Build.props e global.json, que vivem lá.
+      context: .
+      dockerfile: src/Ledger.Api/Dockerfile
+    container_name: ledger-api
+    depends_on:
+      db:
+        # Espera o banco estar de fato pronto, não apenas o container existir.
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # Dentro da rede do compose o banco é "db", não localhost.
+      LEDGER_DB: "Host=db;Port=5432;Database=ledger;Username=ledger;Password=ledger"
+      # Aqui as migrations são aplicadas no start, e isso é o opt-in explícito
+      # que o padrão desligado existe para permitir: em produção, migração é
+      # passo do pipeline, porque instâncias subindo juntas disputariam o lock e
+      # uma migração que falha derrubaria o processo em lugar de falhar o deploy.
+      Ledger__MigrateOnStartup: "true"
+    ports:
+      # Mesma porta do "dotnet run", para que o README tenha uma URL só.
+      - "5080:8080"
+    healthcheck:
+      # Liveness, não readiness: aqui a pergunta é se o processo está no ar.
+      # O wget vem do busybox da imagem Alpine.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/health/live || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
 
 volumes:

@@ -1,0 +1,29 @@
+# Mantém o contexto de build pequeno.
+#
+# Não é só velocidade: copiar bin/ e obj/ do host para dentro da imagem faria o
+# "dotnet restore" e o "dotnet publish" reaproveitarem artefatos compilados numa
+# máquina diferente, com outro SDK e outro runtime. O resultado é um build que
+# depende do estado da máquina de quem o roda, que é o oposto de reproduzível.
+
+**/bin/
+**/obj/
+**/out/
+**/TestResults/
+
+.git/
+.github/
+.vs/
+.vscode/
+.idea/
+
+**/*.user
+**/*.suo
+**/*.log
+
+docs/
+*.md
+!README.md
+
+Dockerfile*
+.dockerignore
+docker-compose*.yml
