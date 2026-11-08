@@ -99,7 +99,7 @@ correspondente, para que quem procurar o tema encontre:
 | RNF-02 | [ADR-0004](adr/0004-snapshot-de-saldo.md), [ADR-0007](adr/0007-ordenacao-do-ledger.md) | teste de carga leve (E14) |
 | RNF-03 | [ADR-0008](adr/0008-resiliencia-e-degradacao-declarada.md) | teste de falha de commit (E06) |
 | RNF-04 | [ADR-0002](adr/0002-ledger-append-only.md), [ADR-0003](adr/0003-idempotencia-como-contrato.md) | teste de 1.000 escritas concorrentes com soma exata (E14) |
-| RNF-05 | [ADR-0009](adr/0009-protecao-de-dados-sensiveis.md) | testes de autenticação e de redação de log (E13) |
+| RNF-05 | [ADR-0009](adr/0009-protecao-de-dados-sensiveis.md) | testes de autenticação, de titularidade e de redação de log (E12, E13) — [ADR-0016](adr/0016-autenticacao-e-titularidade.md) |
 | RNF-06 | esta documentação, [ADR-0001](adr/0001-monolito-modular.md) | testes de arquitetura, que já rodam |
 | RNF-07 | [ADR-0002](adr/0002-ledger-append-only.md), [ADR-0003](adr/0003-idempotencia-como-contrato.md), [ADR-0007](adr/0007-ordenacao-do-ledger.md) | testes de concorrência e idempotência |
 | RO-06 | higiene de build acima | CI verde em runner limpo |

@@ -1,4 +1,5 @@
 using Ledger.Application.Abstractions;
+using Ledger.Application.Security;
 using Ledger.Domain;
 
 namespace Ledger.Application.Accounts;
@@ -30,6 +31,9 @@ public enum OpenAccountStatus
 
     /// <summary>O pedido é inválido. A API responde <c>400</c>.</summary>
     Rejected,
+
+    /// <summary>O chamador não pode abrir conta para esse cliente. A API responde <c>403</c>.</summary>
+    Forbidden,
 }
 
 /// <summary>
@@ -42,7 +46,7 @@ public enum OpenAccountStatus
 /// segundo sistema de pé — e por isso é deliberadamente mínimo: não há
 /// encerramento, bloqueio, alteração de titularidade nem validação de cliente.
 /// </remarks>
-public sealed class OpenAccountHandler(ILedgerRepository repository)
+public sealed class OpenAccountHandler(ILedgerRepository repository, ICallerAccess caller)
 {
     /// <summary>Executa o pedido.</summary>
     public async Task<OpenAccountResult> HandleAsync(
@@ -50,6 +54,15 @@ public sealed class OpenAccountHandler(ILedgerRepository repository)
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
+
+        // Aqui o 403 não revela nada: o chamador informou o cliente, não o está
+        // descobrindo. Já nas leituras, o mesmo caso responde como inexistente.
+        if (!caller.Scope.Permits(command.CustomerId))
+        {
+            return new OpenAccountResult(
+                OpenAccountStatus.Forbidden,
+                Detail: "O chamador não pode abrir contas para este cliente.");
+        }
 
         Account conta;
 
@@ -93,7 +106,7 @@ public sealed record GetMovementQuery(Guid AccountId, Guid MovementId);
 /// para qualquer porta de entrada futura.
 /// </para>
 /// </remarks>
-public sealed class GetMovementHandler(ILedgerRepository repository)
+public sealed class GetMovementHandler(ILedgerRepository repository, ICallerAccess caller)
 {
     /// <summary>Executa a consulta. Devolve <c>null</c> se não existe.</summary>
     public async Task<Movement?> HandleAsync(
@@ -103,6 +116,15 @@ public sealed class GetMovementHandler(ILedgerRepository repository)
         ArgumentNullException.ThrowIfNull(query);
 
         if (query.AccountId == Guid.Empty || query.MovementId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var conta = await repository
+            .FindAccountAsync(AccountId.From(query.AccountId), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (conta is null || !caller.Scope.Permits(conta))
         {
             return null;
         }

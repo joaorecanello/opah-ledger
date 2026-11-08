@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Emite tokens de desenvolvimento para chamar a API local.
+
+    Existe porque a API exige JWT e não há servidor de identidade no repositório
+    (ver ADR-0016). NÃO faz parte da solução entregue em produção: é ferramenta de
+    quem avalia e de quem desenvolve, e por isso vive em tools/, fora de src/.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Ledger.DevToken</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+  </ItemGroup>
+
+</Project>

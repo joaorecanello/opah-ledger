@@ -2,6 +2,7 @@ using System.Threading.RateLimiting;
 using Ledger.Api.Endpoints;
 using Ledger.Api.Observability;
 using Ledger.Api.Resilience;
+using Ledger.Api.Security;
 using Ledger.Infrastructure;
 using Ledger.Infrastructure.Persistence;
 using Ledger.Infrastructure.Telemetry;
@@ -47,6 +48,8 @@ builder.Logging.AddJsonConsole(opcoes =>
 // estiver habilitada em algum nível; desligá-la remove o caminho de todas as
 // linhas. TraceId e SpanId continuam, por rastreamento de atividade.
 builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.None);
+
+builder.Services.AddLedgerSecurity();
 
 builder.Services.AddOpenApi();
 
@@ -186,7 +189,11 @@ var app = builder.Build();
 app.UseMiddleware<CorrelationMiddleware>();
 
 app.UseStatusCodePages();
+// Autenticação antes dos limites de capacidade: requisição sem credencial
+// válida não deve ocupar vaga que pertence a quem tem.
 app.UseExceptionHandler();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseRateLimiter();
 app.UseRequestTimeouts();
 
@@ -204,13 +211,14 @@ if (app.Environment.IsDevelopment())
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }))
    .WithName("Liveness")
    .WithSummary("Indica que o processo está no ar.")
+   .AllowAnonymous()
    .ExcludeFromDescription();
 
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = registro => registro.Tags.Contains(ReadinessCheck.Tag),
     ResponseWriter = ReadinessCheck.WriteResponseAsync,
-}).ExcludeFromDescription();
+}).AllowAnonymous().ExcludeFromDescription();
 
 // Versionamento no caminho: explícito, cacheável e trivial de rotear.
 var v1 = app.MapGroup("/api/v1")

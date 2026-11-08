@@ -1,5 +1,6 @@
 using Ledger.Api.Contracts;
 using Ledger.Api.Resilience;
+using Ledger.Api.Security;
 using Ledger.Application.Accounts;
 using Ledger.Application.Balances;
 
@@ -20,9 +21,12 @@ public static class AccountEndpoints
                 "Existe para que o projeto seja executável sem depender do "
                 + "contexto de Clientes. O cadastro de contas não pertence ao "
                 + "razão; ver a premissa PR-07 na documentação.")
+            .RequireAuthorization(AuthScopes.WritePolicy)
             .RequireRateLimiting(RateLimitPolicies.Write)
             .Produces<AccountResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         group.MapGet("/accounts/{accountId:guid}/balance", ConsultarSaldo)
@@ -34,6 +38,7 @@ public static class AccountEndpoints
                 + "futuro é recusado, porque movimentações ainda podem ser "
                 + "registradas para aquele período. A resposta informa de onde o "
                 + "número veio.")
+            .RequireAuthorization(AuthScopes.ReadPolicy)
             .RequireRateLimiting(RateLimitPolicies.Read)
             .Produces<BalanceResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -52,6 +57,11 @@ public static class AccountEndpoints
         var resultado = await handler.HandleAsync(
             new OpenAccountCommand(request.CustomerId, request.Currency),
             cancellationToken);
+
+        if (resultado.Status == OpenAccountStatus.Forbidden)
+        {
+            return LedgerProblems.CustomerForbidden(resultado.Detail);
+        }
 
         if (resultado.Status != OpenAccountStatus.Opened)
         {

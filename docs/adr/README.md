@@ -74,3 +74,4 @@ As ADRs são identificadas pela ordem em que foram **decididas**, não pela orde
 em que convém ler. A 0011 tem número mais alto que a 0010 e foi escrita antes de
 todas, porque a decisão surgiu ao montar a estrutura do projeto — registrá-la na
 hora era mais honesto que renumerar depois.
+| [0016](0016-autenticacao-e-titularidade.md) | Autenticação por JWT, escopos e titularidade da conta | aceito |

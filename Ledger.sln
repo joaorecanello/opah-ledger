@@ -25,6 +25,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ledger.Domain.Tests", "test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ledger.Application.Tests", "tests\Ledger.Application.Tests\Ledger.Application.Tests.csproj", "{CD427965-6A5A-4827-8EE8-3BAE1A870FE9}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{07C2787E-EAC7-C090-1BA3-A61EC2A24D84}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ledger.DevToken", "tools\Ledger.DevToken\Ledger.DevToken.csproj", "{C5902998-B034-4977-9E09-0843F740CEF0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -143,6 +147,18 @@ Global
 		{CD427965-6A5A-4827-8EE8-3BAE1A870FE9}.Release|x64.Build.0 = Release|Any CPU
 		{CD427965-6A5A-4827-8EE8-3BAE1A870FE9}.Release|x86.ActiveCfg = Release|Any CPU
 		{CD427965-6A5A-4827-8EE8-3BAE1A870FE9}.Release|x86.Build.0 = Release|Any CPU
+		{C5902998-B034-4977-9E09-0843F740CEF0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C5902998-B034-4977-9E09-0843F740CEF0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C5902998-B034-4977-9E09-0843F740CEF0}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C5902998-B034-4977-9E09-0843F740CEF0}.Debug|x64.Build.0 = Debug|Any CPU
+		{C5902998-B034-4977-9E09-0843F740CEF0}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C5902998-B034-4977-9E09-0843F740CEF0}.Debug|x86.Build.0 = Debug|Any CPU
+		{C5902998-B034-4977-9E09-0843F740CEF0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C5902998-B034-4977-9E09-0843F740CEF0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C5902998-B034-4977-9E09-0843F740CEF0}.Release|x64.ActiveCfg = Release|Any CPU
+		{C5902998-B034-4977-9E09-0843F740CEF0}.Release|x64.Build.0 = Release|Any CPU
+		{C5902998-B034-4977-9E09-0843F740CEF0}.Release|x86.ActiveCfg = Release|Any CPU
+		{C5902998-B034-4977-9E09-0843F740CEF0}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -157,5 +173,6 @@ Global
 		{22B1ED46-8F12-413B-9716-089F63FF6342} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{429457EB-1ADA-4F92-BB25-1A41351A070A} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{CD427965-6A5A-4827-8EE8-3BAE1A870FE9} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{C5902998-B034-4977-9E09-0843F740CEF0} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 	EndGlobalSection
 EndGlobal

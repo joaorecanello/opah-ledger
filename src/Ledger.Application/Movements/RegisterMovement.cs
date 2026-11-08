@@ -1,5 +1,6 @@
 using Ledger.Application.Abstractions;
 using Ledger.Application.Observability;
+using Ledger.Application.Security;
 using Ledger.Domain;
 
 namespace Ledger.Application.Movements;
@@ -146,6 +147,7 @@ public sealed record RegisterMovementOptions
 /// </remarks>
 public sealed class RegisterMovementHandler(
     ILedgerRepository repository,
+    ICallerAccess caller,
     IClock clock,
     RegisterMovementOptions? options = null,
     LedgerMetrics? metrics = null)
@@ -189,7 +191,10 @@ public sealed class RegisterMovementHandler(
         var conta = await repository.FindAccountAsync(contaId, cancellationToken)
             .ConfigureAwait(false);
 
-        if (conta is null)
+        // Conta de outro titular é indistinguível de conta inexistente: a mesma
+        // resposta, no mesmo ponto. Diferenciá-las (403 x 404) transformaria a API
+        // num oráculo para descobrir quais identificadores existem.
+        if (conta is null || !caller.Scope.Permits(conta))
         {
             return new RegisterMovementResult(
                 RegisterMovementStatus.AccountNotFound,

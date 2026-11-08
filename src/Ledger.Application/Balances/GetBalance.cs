@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Ledger.Application.Abstractions;
 using Ledger.Application.Observability;
+using Ledger.Application.Security;
 using Ledger.Domain;
 
 namespace Ledger.Application.Balances;
@@ -134,6 +135,7 @@ public sealed record GetBalanceOptions
 /// </remarks>
 public sealed class GetBalanceHandler(
     ILedgerRepository repository,
+    ICallerAccess caller,
     ISnapshotStore snapshots,
     IClock clock,
     GetBalanceOptions? options = null,
@@ -185,7 +187,8 @@ public sealed class GetBalanceHandler(
         var conta = await repository.FindAccountAsync(contaId, cancellationToken)
             .ConfigureAwait(false);
 
-        if (conta is null)
+        // Titular diferente responde como conta inexistente; ver RegisterMovement.
+        if (conta is null || !caller.Scope.Permits(conta))
         {
             return new GetBalanceResult(
                 GetBalanceStatus.AccountNotFound,

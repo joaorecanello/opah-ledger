@@ -1,4 +1,5 @@
 using Ledger.Application.Movements;
+using Ledger.Application.Security;
 using Ledger.Domain;
 
 namespace Ledger.Application.Tests;
@@ -27,7 +28,7 @@ public sealed class RegisterMovementHandlerTests
     private RegisterMovementHandler Criar(RegisterMovementOptions? opcoes = null)
     {
         _repositorio.Adicionar(_conta);
-        return new RegisterMovementHandler(_repositorio, _relogio, opcoes);
+        return new RegisterMovementHandler(_repositorio, FixedCallerAccess.Unrestricted, _relogio, opcoes);
     }
 
     private RegisterMovementCommand Comando(
@@ -180,7 +181,7 @@ public sealed class RegisterMovementHandlerTests
         var encerrada = Account.Rehydrate(
             AccountId.New(), CustomerId.New(), Currency.Brl, AccountStatus.Closed);
         _repositorio.Adicionar(encerrada);
-        var handler = new RegisterMovementHandler(_repositorio, _relogio);
+        var handler = new RegisterMovementHandler(_repositorio, FixedCallerAccess.Unrestricted, _relogio);
 
         var resultado = await handler.HandleAsync(
             Comando(conta: encerrada.Id.Value), TestContext.Current.CancellationToken);

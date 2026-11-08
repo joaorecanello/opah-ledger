@@ -40,8 +40,10 @@ decisão arquitetural**, em vez de apenas exercitar código.
 
 ## O que já roda hoje
 
-275 testes: 87 de domínio, 60 de aplicação, 7 de arquitetura, 121 de integração
-(80 dependem de PostgreSQL real). Inclui métricas, correlação e a prova de que
+315 testes: 87 de domínio, 70 de aplicação, 7 de arquitetura, 151 de integração
+(88 dependem de PostgreSQL real). Inclui autenticação (token ausente, adulterado,
+expirado, `alg: none`, confusão de algoritmo), escopos e titularidade da conta,
+verificados no caso de uso e pela API. Inclui métricas, correlação e a prova de que
 nenhum valor, conta, chave de idempotência ou referência externa chega ao log.
 
 Numa máquina sem Docker e sem `LEDGER_TEST_DB`, os testes que dependem de banco

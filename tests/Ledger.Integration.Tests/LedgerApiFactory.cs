@@ -72,6 +72,29 @@ public sealed class LedgerApiFactory : WebApplicationFactory<Program>
     /// </summary>
     public Action<IServiceCollection>? OverrideServices { get; init; }
 
+    /// <summary>
+    /// Os clientes criados enviam, por padrão, um token com acesso irrestrito.
+    /// </summary>
+    /// <remarks>
+    /// Os testes de segurança desligam isto e escolhem o cabeçalho, caso a caso.
+    /// </remarks>
+    public bool AuthenticatedByDefault { get; init; } = true;
+
+    /// <inheritdoc/>
+    protected override void ConfigureClient(HttpClient client)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+
+        base.ConfigureClient(client);
+
+        // Cabeçalho padrão do cliente: um cabeçalho definido na própria requisição
+        // prevalece sobre ele, e é assim que os testes de segurança escolhem o seu.
+        if (AuthenticatedByDefault)
+        {
+            client.DefaultRequestHeaders.Authorization = TestTokens.Bearer(TestTokens.CrossCustomer());
+        }
+    }
+
     /// <inheritdoc/>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -90,6 +113,10 @@ public sealed class LedgerApiFactory : WebApplicationFactory<Program>
                 // execução. Deixar o host aplicá-las também faria instâncias
                 // concorrentes disputarem o lock de migração.
                 ["Ledger:MigrateOnStartup"] = "false",
+
+                ["Ledger:Auth:Issuer"] = TestTokens.Issuer,
+                ["Ledger:Auth:Audience"] = TestTokens.Audience,
+                ["Ledger:Auth:SigningKey"] = TestTokens.Key,
             };
 
             foreach (var (chave, valor) in Settings)

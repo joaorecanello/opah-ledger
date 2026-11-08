@@ -9,7 +9,7 @@ em qualquer ponto do tempo.
 > **Estado atual: solução completa com um comando.** Os dois requisitos
 > funcionais do enunciado, expostos por HTTP, com cache de saldo consolidado e
 > reconciliado por um worker — `docker compose up --build` sobe tudo, sem .NET
-> instalado. 275 testes, 80 deles dependem de PostgreSQL real.
+> instalado. 315 testes, 88 deles dependem de PostgreSQL real.
 > [Estado atual](#estado-atual) e [LIMITATIONS.md](LIMITATIONS.md) são
 > explícitos sobre o que existe e o que não existe.
 
@@ -169,16 +169,26 @@ HTTP puro de propósito. Em produção, o TLS é terminado antes da aplicação.
 ## Exercitando a API
 
 O fluxo abaixo foi executado contra a aplicação rodando, e as respostas são as
-reais. Provisione uma conta:
+reais. Toda chamada de negócio exige um token JWT. A ferramenta `tools/Ledger.DevToken`
+emite um com a chave **pública** de desenvolvimento (a mesma do `docker-compose.yml`;
+vale para ambiente local e mais nada). `--cross-customer` alcança qualquer conta;
+`--customer <guid>` restringe o token às contas daquele cliente:
 
 ```bash
-curl -sS -X POST http://localhost:5080/api/v1/accounts -H 'Content-Type: application/json' -d '{"customerId":"2f1b8d4e-0c7a-4a1f-9b3e-5d6c7a8b9c01","currency":"BRL"}'
+TOKEN=$(dotnet run --project tools/Ledger.DevToken -- --cross-customer)
+```
+
+Sem token a resposta é `401`; com `ledger:read` apenas, registrar dá `403`; conta de
+outro titular responde como conta inexistente (`404`). Provisione uma conta:
+
+```bash
+curl -sS -X POST http://localhost:5080/api/v1/accounts -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"customerId":"2f1b8d4e-0c7a-4a1f-9b3e-5d6c7a8b9c01","currency":"BRL"}'
 ```
 
 Registre um crédito. A chave de idempotência é **obrigatória**:
 
 ```bash
-curl -sS -i -X POST http://localhost:5080/api/v1/accounts/SUA_CONTA/movements -H 'Content-Type: application/json' -H 'Idempotency-Key: pix-e3012-0001' -d '{"type":"Credit","amount":1500.00,"currency":"BRL","occurredAt":"2026-11-07T13:00:00Z"}'
+curl -sS -i -X POST http://localhost:5080/api/v1/accounts/SUA_CONTA/movements -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -H 'Idempotency-Key: pix-e3012-0001' -d '{"type":"Credit","amount":1500.00,"currency":"BRL","occurredAt":"2026-11-07T13:00:00Z"}'
 ```
 
 ```
@@ -194,7 +204,7 @@ torna seguro repetir depois de um timeout.
 Agora mude só o valor, mantendo a mesma chave:
 
 ```bash
-curl -sS -X POST http://localhost:5080/api/v1/accounts/SUA_CONTA/movements -H 'Content-Type: application/json' -H 'Idempotency-Key: pix-e3012-0001' -d '{"type":"Credit","amount":9999.00,"currency":"BRL","occurredAt":"2026-11-07T13:00:00Z"}'
+curl -sS -X POST http://localhost:5080/api/v1/accounts/SUA_CONTA/movements -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -H 'Idempotency-Key: pix-e3012-0001' -d '{"type":"Credit","amount":9999.00,"currency":"BRL","occurredAt":"2026-11-07T13:00:00Z"}'
 ```
 
 ```json
@@ -208,7 +218,7 @@ resolver: as duas interpretações possíveis movimentam dinheiro.
 Consulte o saldo:
 
 ```bash
-curl -sS http://localhost:5080/api/v1/accounts/SUA_CONTA/balance
+curl -sS http://localhost:5080/api/v1/accounts/SUA_CONTA/balance -H "Authorization: Bearer $TOKEN"
 ```
 
 ```json
@@ -219,7 +229,7 @@ curl -sS http://localhost:5080/api/v1/accounts/SUA_CONTA/balance
 E em um instante do passado — `asOf` é inclusivo e usa o tempo de negócio:
 
 ```bash
-curl -sS 'http://localhost:5080/api/v1/accounts/SUA_CONTA/balance?asOf=2026-11-06T13:00:00Z'
+curl -sS 'http://localhost:5080/api/v1/accounts/SUA_CONTA/balance?asOf=2026-11-06T13:00:00Z' -H "Authorization: Bearer $TOKEN"
 ```
 
 > Use o sufixo `Z`. Um deslocamento com `+` precisa ser codificado como `%2B`:
@@ -296,17 +306,20 @@ Detalhes e o que a medição mudou no desenho:
   de `500`; `/health/ready` degrada e `/health/live` não; circuito abre e
   recusa em 5 ms; escrita e leitura têm capacidade separada (`429`); a
   instância se recupera sozinha quando o banco volta.
-- 275 testes passando: 87 de domínio, 60 de aplicação, 7 de arquitetura,
-  121 de integração (80 dependem de PostgreSQL real).
+- 315 testes passando: 87 de domínio, 70 de aplicação, 7 de arquitetura,
+  151 de integração (88 dependem de PostgreSQL real).
+- **Segurança verificada:** JWT com escopos, titularidade da conta decidida no caso
+  de uso (conta alheia responde como inexistente), sem modo aberto, token ausente do
+  log; ver [ADR-0016](docs/adr/0016-autenticacao-e-titularidade.md).
 - **Observabilidade verificada:** métricas de negócio (`ledger.*`), log JSON
   sem dado sensível (provado por teste sobre mensagem, campos, escopos e
   exceção), `X-Correlation-Id` ponta a ponta e persistido na movimentação.
   OTLP liga-se definindo `OTEL_EXPORTER_OTLP_ENDPOINT`; alerta ainda não existe.
-- Requisitos decompostos, 14 premissas registradas, 15 ADRs e as limitações
+- Requisitos decompostos, 14 premissas registradas, 16 ADRs e as limitações
   conhecidas em [LIMITATIONS.md](LIMITATIONS.md).
 
 **Não existe ainda:**
-- Autenticação e autorização (a API não autentica nada) — próxima etapa.
+- Provedor de identidade real (a chave de assinatura é simétrica e pública em desenvolvimento).
 - Alertas sobre as métricas (a métrica de divergência existe; a regra não).
 
 Os ADRs descrevem o desenho dessas partes e o que ainda é só desenho. Decidir antes de implementar é a
@@ -429,7 +442,7 @@ previsto.
 dotnet test
 ```
 
-275 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
+315 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
 banco em memória não reproduz unique constraint sob concorrência, logo o teste
 de idempotência — o mais importante da suíte — passaria sem provar nada.
 

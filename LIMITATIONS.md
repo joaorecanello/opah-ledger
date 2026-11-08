@@ -57,18 +57,32 @@ escala e a operação.
 | Pendente | Onde está desenhado |
 |----------|---------------------|
 | Observabilidade: OpenTelemetry, log estruturado, métricas de negócio | [ADR-0010](docs/adr/0010-observabilidade.md) |
-| Segurança: JWT com escopos, autorização por titularidade, redação de log | [ADR-0009](docs/adr/0009-protecao-de-dados-sensiveis.md) |
 | Outbox transacional | [ADR-0006](docs/adr/0006-sem-broker-no-caminho-de-escrita.md) |
 
-**A ausência mais relevante é a de segurança.** Hoje a API não autentica nada:
-qualquer requisição registra movimentação em qualquer conta. Isso é inaceitável
-em produção e está assim porque autenticação sem um provedor de identidade real
-seria encenação — ver [PR-09](docs/premissas.md#pr-09). O desenho está no
-ADR-0009; a implementação não.
+## Segurança
 
-Há uma consequência prática: **o endpoint de provisionamento de conta é aberto**.
-Ele existe para o projeto ser executável sem o contexto de Clientes
-([PR-07](docs/premissas.md#pr-07)), e não deveria existir numa implantação real.
+Implementada e verificada (ver [ADR-0016](docs/adr/0016-autenticacao-e-titularidade.md)):
+JWT com escopos, titularidade da conta no caso de uso, sem modo aberto. O que
+**não** está resolvido:
+
+- **Chave simétrica (HS256).** Quem valida poderia emitir: vazar a chave da API
+  permite forjar tokens. Em produção a API deve validar por JWKS do provedor de
+  identidade, conhecendo só a chave pública. Não há emissor real neste repositório;
+  `tools/Ledger.DevToken` emite tokens com a chave pública de desenvolvimento.
+- **A chave de desenvolvimento é pública** (está no `docker-compose.yml`). Qualquer
+  implantação que não seja local precisa definir `LEDGER_AUTH_KEY`.
+- **Sem revogação**: um token vale até expirar.
+- **O ledger não grava quem registrou** cada movimentação, só o `correlation_id`. A
+  identidade (`sub`) está no token, fora do fato gravado.
+- **O provisionamento de conta continua existindo** para o projeto ser executável
+  sem o contexto de Clientes ([PR-07](docs/premissas.md#pr-07)). Agora exige
+  `ledger:write` e respeita o alcance do token, mas não deveria existir numa
+  implantação real.
+- **TLS**: terminado antes da aplicação; localmente a API sobe em HTTP.
+- **Sem limite por cliente**: os limites de capacidade são globais (leitura e
+  escrita), não por chamador. Um cliente ruidoso consome a vaga dos demais.
+- **Criptografia em repouso** e o tratamento de `external_reference` como dado
+  sensível dependem do volume/infraestrutura; nada disso é configurado aqui.
 
 ## Resiliência
 

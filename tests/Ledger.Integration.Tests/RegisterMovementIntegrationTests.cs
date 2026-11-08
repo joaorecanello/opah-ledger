@@ -1,5 +1,6 @@
 using Ledger.Application.Abstractions;
 using Ledger.Application.Movements;
+using Ledger.Application.Security;
 using Ledger.Domain;
 using Ledger.Infrastructure;
 using Ledger.Infrastructure.Persistence;
@@ -26,7 +27,7 @@ public sealed class RegisterMovementIntegrationTests(PostgresFixture fixture)
     private static string NovaChave() => $"chave-{Guid.CreateVersion7():N}";
 
     private static RegisterMovementHandler CriarHandler(LedgerDbContext contexto) =>
-        new(new LedgerRepository(contexto), new SystemClock());
+        new(new LedgerRepository(contexto), FixedCallerAccess.Unrestricted, new SystemClock());
 
     private static RegisterMovementCommand Comando(
         Account conta,

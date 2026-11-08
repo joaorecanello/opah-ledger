@@ -1,6 +1,7 @@
 using Ledger.Api.Contracts;
 using Ledger.Api.Observability;
 using Ledger.Api.Resilience;
+using Ledger.Api.Security;
 using Ledger.Application.Accounts;
 using Ledger.Application.Movements;
 using Ledger.Domain;
@@ -26,10 +27,13 @@ public static class MovementEndpoints
                 + "requisição com a mesma chave e o mesmo conteúdo devolve 200 "
                 + "com a resposta original, não registra de novo. A mesma chave "
                 + "com conteúdo diferente devolve 409.")
+            .RequireAuthorization(AuthScopes.WritePolicy)
             .RequireRateLimiting(RateLimitPolicies.Write)
             .Produces<MovementResponse>(StatusCodes.Status201Created)
             .Produces<MovementResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status429TooManyRequests)
@@ -38,6 +42,7 @@ public static class MovementEndpoints
         group.MapGet("/accounts/{accountId:guid}/movements/{movementId:guid}", Buscar)
             .WithName("BuscarMovimentacao")
             .WithSummary("Devolve uma movimentação registrada.")
+            .RequireAuthorization(AuthScopes.ReadPolicy)
             .RequireRateLimiting(RateLimitPolicies.Read)
             .Produces<MovementResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound)

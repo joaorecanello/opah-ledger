@@ -1,6 +1,7 @@
 using Ledger.Application.Abstractions;
 using Ledger.Application.Balances;
 using Ledger.Application.Movements;
+using Ledger.Application.Security;
 using Ledger.Domain;
 using Ledger.Infrastructure;
 using Ledger.Infrastructure.Persistence;
@@ -26,6 +27,7 @@ public sealed class SnapshotIntegrationTests(PostgresFixture fixture)
     private static RegisterMovementHandler Registro(LedgerDbContext contexto) =>
         new(
             new LedgerRepository(contexto),
+            FixedCallerAccess.Unrestricted,
             new SystemClock(),
             // O histórico dos testes é de meses atrás; a política padrão de
             // retroatividade é de 30 dias.
@@ -34,7 +36,7 @@ public sealed class SnapshotIntegrationTests(PostgresFixture fixture)
     private static GetBalanceHandler Consulta(
         LedgerDbContext contexto,
         GetBalanceOptions? opcoes = null) =>
-        new(new LedgerRepository(contexto), new SnapshotStore(contexto), new SystemClock(), opcoes);
+        new(new LedgerRepository(contexto), FixedCallerAccess.Unrestricted, new SnapshotStore(contexto), new SystemClock(), opcoes);
 
     private static ConsolidateSnapshotsHandler Consolidacao(LedgerDbContext contexto) =>
         new(new LedgerRepository(contexto), new SnapshotStore(contexto), new SystemClock());

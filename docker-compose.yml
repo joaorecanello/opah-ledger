@@ -75,6 +75,13 @@ services:
       # passo do pipeline, porque instâncias subindo juntas disputariam o lock e
       # uma migração que falha derrubaria o processo em lugar de falhar o deploy.
       Ledger__MigrateOnStartup: "true"
+      # Autenticação. A API NÃO sobe sem chave: não existe modo aberto. O padrão
+      # abaixo é público (está neste arquivo) e serve a ambiente local e a nada
+      # mais; em qualquer outro lugar, defina LEDGER_AUTH_KEY. Para emitir um
+      # token: dotnet run --project tools/Ledger.DevToken -- --cross-customer
+      Ledger__Auth__Issuer: "${LEDGER_AUTH_ISSUER:-ledger-dev}"
+      Ledger__Auth__Audience: "${LEDGER_AUTH_AUDIENCE:-ledger-api}"
+      Ledger__Auth__SigningKey: "${LEDGER_AUTH_KEY:-bGVkZ2VyLWRldi1vbmx5LWtleS1uZXZlci11c2UtaW4tcHJvZCEh}"
     ports:
       # Mesma porta do "dotnet run", para que o README tenha uma URL só.
       - "5080:8080"

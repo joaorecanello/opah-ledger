@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Ledger.Application.Movements;
+using Ledger.Application.Security;
 using Ledger.Domain;
 using Ledger.Infrastructure;
 using Ledger.Infrastructure.Persistence;
@@ -163,7 +164,7 @@ public sealed class AmbiguousCommitTests(PostgresFixture fixture)
         {
             await using var preparacao = fixture.CreateContext();
             var registro = new RegisterMovementHandler(
-                new LedgerRepository(preparacao),
+                new LedgerRepository(preparacao), FixedCallerAccess.Unrestricted,
                 new SystemClock(),
                 new RegisterMovementOptions { MaxBackdating = TimeSpan.FromDays(3650) });
 
@@ -182,7 +183,7 @@ public sealed class AmbiguousCommitTests(PostgresFixture fixture)
         await using var contexto = ContextoComFalha(falha);
 
         var handler = new RegisterMovementHandler(
-            new LedgerRepository(contexto),
+            new LedgerRepository(contexto), FixedCallerAccess.Unrestricted,
             new SystemClock(),
             new RegisterMovementOptions { MaxBackdating = TimeSpan.FromDays(3650) });
 
@@ -253,7 +254,7 @@ public sealed class AmbiguousCommitTests(PostgresFixture fixture)
         await using (var contexto = ContextoComFalha(falha))
         {
             await new RegisterMovementHandler(
-                new LedgerRepository(contexto), new SystemClock())
+                new LedgerRepository(contexto), FixedCallerAccess.Unrestricted, new SystemClock())
                 .HandleAsync(
                     new RegisterMovementCommand(
                         conta.Id.Value, MovementType.Credit, 100m, "BRL",
@@ -264,6 +265,7 @@ public sealed class AmbiguousCommitTests(PostgresFixture fixture)
         await using var leitura = fixture.CreateContext();
         var saldo = await new Ledger.Application.Balances.GetBalanceHandler(
             new LedgerRepository(leitura),
+            FixedCallerAccess.Unrestricted,
             new SnapshotStore(leitura),
             new SystemClock())
             .HandleAsync(

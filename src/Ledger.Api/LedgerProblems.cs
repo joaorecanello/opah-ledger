@@ -59,6 +59,14 @@ public static class LedgerProblems
                   + "Se usar deslocamento com sinal de mais, codifique-o como "
                   + "%2B — um '+' cru na URL é lido como espaço.");
 
+    /// <summary>O chamador não pode abrir conta para o cliente informado.</summary>
+    public static IResult CustomerForbidden(string? detail) =>
+        Results.Problem(
+            type: Namespace + "customer-forbidden",
+            title: "Cliente fora do alcance do token",
+            statusCode: StatusCodes.Status403Forbidden,
+            detail: detail);
+
     /// <summary>Conta não encontrada.</summary>
     public static IResult AccountNotFound(string? detail) =>
         Results.Problem(

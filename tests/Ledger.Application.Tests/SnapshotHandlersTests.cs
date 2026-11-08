@@ -1,5 +1,6 @@
 using Ledger.Application.Balances;
 using Ledger.Application.Movements;
+using Ledger.Application.Security;
 using Ledger.Domain;
 
 namespace Ledger.Application.Tests;
@@ -38,12 +39,12 @@ public sealed class SnapshotHandlersTests
         new(_repositorio, _snapshots, opcoes);
 
     private GetBalanceHandler Consulta(GetBalanceOptions? opcoes = null) =>
-        new(_repositorio, _snapshots, _relogio, opcoes);
+        new(_repositorio, FixedCallerAccess.Unrestricted, _snapshots, _relogio, opcoes);
 
     private async Task Registrar(decimal valor, MovementType tipo, DateTimeOffset ocorridaEm)
     {
         var handler = new RegisterMovementHandler(
-            _repositorio,
+            _repositorio, FixedCallerAccess.Unrestricted,
             _relogio,
             new RegisterMovementOptions { MaxBackdating = TimeSpan.FromDays(3650) });
 

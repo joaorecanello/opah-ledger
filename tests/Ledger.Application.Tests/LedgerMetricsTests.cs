@@ -1,6 +1,7 @@
 using Ledger.Application.Balances;
 using Ledger.Application.Movements;
 using Ledger.Application.Observability;
+using Ledger.Application.Security;
 using Ledger.Domain;
 
 namespace Ledger.Application.Tests;
@@ -45,12 +46,13 @@ public sealed class LedgerMetricsTests : IDisposable
     private RegisterMovementHandler Registro() =>
         new(
             _repositorio,
+            FixedCallerAccess.Unrestricted,
             _relogio,
             new RegisterMovementOptions { MaxBackdating = TimeSpan.FromDays(3650) },
             _metricas);
 
     private GetBalanceHandler Consulta() =>
-        new(_repositorio, _snapshots, _relogio, metrics: _metricas);
+        new(_repositorio, FixedCallerAccess.Unrestricted, _snapshots, _relogio, metrics: _metricas);
 
     private ConsolidateSnapshotsHandler Consolidacao(ConsolidateSnapshotsOptions? opcoes = null) =>
         new(_repositorio, _snapshots, _relogio, opcoes, _metricas);

@@ -1,5 +1,6 @@
 using Ledger.Application.Balances;
 using Ledger.Application.Movements;
+using Ledger.Application.Security;
 using Ledger.Domain;
 
 namespace Ledger.Application.Tests;
@@ -28,7 +29,7 @@ public sealed class GetBalanceHandlerTests
     private GetBalanceHandler Consulta(GetBalanceOptions? opcoes = null)
     {
         _repositorio.Adicionar(_conta);
-        return new GetBalanceHandler(_repositorio, _snapshots, _relogio, opcoes);
+        return new GetBalanceHandler(_repositorio, FixedCallerAccess.Unrestricted, _snapshots, _relogio, opcoes);
     }
 
     private async Task Registrar(
@@ -39,7 +40,7 @@ public sealed class GetBalanceHandlerTests
     {
         _repositorio.Adicionar(_conta);
         var handler = new RegisterMovementHandler(
-            _repositorio,
+            _repositorio, FixedCallerAccess.Unrestricted,
             new FixedClock(Agora),
             new RegisterMovementOptions { MaxBackdating = TimeSpan.FromDays(3650) });
 

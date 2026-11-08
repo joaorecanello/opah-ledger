@@ -37,7 +37,7 @@ controles mais caros sobre dado que não precisava estar aqui.
 | Camada | Decisão |
 |--------|---------|
 | Transporte | TLS obrigatório. Localmente a API sobe em HTTP puro por conveniência de quem avalia; em produção o TLS termina antes da aplicação |
-| Autenticação | OAuth2 *client credentials* com JWT. O consumidor é sistema interno ([PR-08](../premissas.md#pr-08)), não usuário final |
+| Autenticação | (implementada no [ADR-0016](0016-autenticacao-e-titularidade.md)) OAuth2 *client credentials* com JWT. O consumidor é sistema interno ([PR-08](../premissas.md#pr-08)), não usuário final |
 | Autorização | escopos `ledger:write` e `ledger:read`, **mais** verificação de titularidade da conta no caso de uso |
 | Repouso | criptografia no volume de dados e em backup |
 | Observabilidade | redação por política: valor, descrição e identificadores mascarados por padrão |

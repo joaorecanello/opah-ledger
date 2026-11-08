@@ -1,5 +1,6 @@
 using Ledger.Application.Balances;
 using Ledger.Application.Movements;
+using Ledger.Application.Security;
 using Ledger.Domain;
 using Ledger.Infrastructure;
 using Ledger.Infrastructure.Persistence;
@@ -31,7 +32,7 @@ public sealed class GetBalanceIntegrationTests(PostgresFixture fixture)
     private static GetBalanceHandler Consulta(
         LedgerDbContext contexto,
         GetBalanceOptions? opcoes = null) =>
-        new(new LedgerRepository(contexto), new SnapshotStore(contexto), new SystemClock(), opcoes);
+        new(new LedgerRepository(contexto), FixedCallerAccess.Unrestricted, new SnapshotStore(contexto), new SystemClock(), opcoes);
 
     private static async Task RegistrarAsync(
         PostgresFixture fixture,
@@ -42,7 +43,7 @@ public sealed class GetBalanceIntegrationTests(PostgresFixture fixture)
     {
         await using var contexto = fixture.CreateContext();
         var handler = new RegisterMovementHandler(
-            new LedgerRepository(contexto),
+            new LedgerRepository(contexto), FixedCallerAccess.Unrestricted,
             new SystemClock(),
             // O histórico dos testes é de meses atrás; a política de
             // retroatividade padrão é de 30 dias.
