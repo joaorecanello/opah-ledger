@@ -189,6 +189,17 @@ HTTP puro de propósito. Em produção, o TLS é terminado antes da aplicação.
 
 ## Exercitando a API
 
+Para testar sem digitar nada: [`docs/exemplos/fluxo.sh`](docs/exemplos/fluxo.sh) percorre
+todos os endpoints e imprime cada resposta com ✓/✗ contra o status esperado, e
+[`docs/exemplos/ledger.http`](docs/exemplos/ledger.http) traz os mesmos pedidos, um a um,
+para o VS Code (REST Client), Rider ou Visual Studio.
+
+```bash
+bash docs/exemplos/fluxo.sh
+```
+
+O passo a passo abaixo explica o que cada chamada prova.
+
 O fluxo abaixo foi executado contra a aplicação rodando, e as respostas são as
 reais. Toda chamada de negócio exige um token JWT. A ferramenta `tools/Ledger.DevToken`
 emite um com a chave **pública** de desenvolvimento (a mesma do `docker-compose.yml`;

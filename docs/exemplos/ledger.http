@@ -1,0 +1,261 @@
+### =====================================================================
+### Exemplos manuais da Ledger API
+###
+### Funciona com a extensão "REST Client" do VS Code, com o HTTP Client do
+### Rider/IntelliJ e com o Visual Studio 2022+ (arquivo .http).
+###
+### Antes de começar:
+###   1. docker compose up --build
+###   2. Emita um token e cole em @token abaixo:
+###        dotnet run --project tools/Ledger.DevToken -- --cross-customer
+###      (alcança qualquer conta; para restringir a um cliente use
+###       --customer <guid>; para só leitura, --scopes ledger:read)
+###   3. Execute os blocos em ordem. Cada um indica o que esperar.
+###
+### A chave do token é PÚBLICA (está no docker-compose.yml): serve a
+### ambiente local e a nada mais.
+### =====================================================================
+
+@host = http://localhost:5080
+@token = COLE_O_TOKEN_AQUI
+
+# Troque estes dois depois do passo 2 (ou deixe: o cliente é só um GUID
+# qualquer, e a chave de idempotência precisa ser única por lançamento).
+@customerId = 2f1b8d4e-0c7a-4a1f-9b3e-5d6c7a8b9c01
+@accountId = COLE_O_accountId_DA_CONTA_CRIADA
+@chave = exemplo-0001
+
+
+### ---------------------------------------------------------------------
+### 0. Saúde (públicas, sem token)
+### ---------------------------------------------------------------------
+
+### 0.1 Vitalidade: o processo está no ar. Esperado: 200 {"status":"live"}
+GET {{host}}/health/live
+
+### 0.2 Prontidão: o banco responde. Esperado: 200 (503 se o banco estiver fora)
+GET {{host}}/health/ready
+
+
+### ---------------------------------------------------------------------
+### 1. Abrir conta
+### ---------------------------------------------------------------------
+
+### 1.1 Esperado: 201 com o accountId. COPIE-O para @accountId acima.
+POST {{host}}/api/v1/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "customerId": "{{customerId}}",
+  "currency": "BRL"
+}
+
+### 1.2 Sem token. Esperado: 401 (application/problem+json)
+POST {{host}}/api/v1/accounts
+Content-Type: application/json
+
+{
+  "customerId": "{{customerId}}",
+  "currency": "BRL"
+}
+
+### 1.3 Moeda inválida (precisa ter 3 letras). Esperado: 400 invalid-currency-code
+POST {{host}}/api/v1/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "customerId": "{{customerId}}",
+  "currency": "REAIS"
+}
+
+
+### ---------------------------------------------------------------------
+### 2. Registrar movimentação (Idempotency-Key é OBRIGATÓRIA)
+### ---------------------------------------------------------------------
+
+### 2.1 Crédito de 1.500,00. Esperado: 201 + cabeçalho Location
+POST {{host}}/api/v1/accounts/{{accountId}}/movements
+Authorization: Bearer {{token}}
+Idempotency-Key: {{chave}}
+Content-Type: application/json
+
+{
+  "type": "Credit",
+  "amount": 1500.00,
+  "currency": "BRL",
+  "occurredAt": "2026-11-07T13:00:00Z",
+  "externalReference": "PIX-0001"
+}
+
+### 2.2 REPITA o 2.1 sem mudar nada (retry de cliente com timeout).
+###     Esperado: 200, MESMO corpo e MESMO movementId. Nada novo é gravado.
+POST {{host}}/api/v1/accounts/{{accountId}}/movements
+Authorization: Bearer {{token}}
+Idempotency-Key: {{chave}}
+Content-Type: application/json
+
+{
+  "type": "Credit",
+  "amount": 1500.00,
+  "currency": "BRL",
+  "occurredAt": "2026-11-07T13:00:00Z",
+  "externalReference": "PIX-0001"
+}
+
+### 2.3 Mesma chave, valor DIFERENTE. Esperado: 409 (erro do chamador)
+POST {{host}}/api/v1/accounts/{{accountId}}/movements
+Authorization: Bearer {{token}}
+Idempotency-Key: {{chave}}
+Content-Type: application/json
+
+{
+  "type": "Credit",
+  "amount": 9999.00,
+  "currency": "BRL",
+  "occurredAt": "2026-11-07T13:00:00Z",
+  "externalReference": "PIX-0001"
+}
+
+### 2.4 Débito de 400,25 com outra chave. Esperado: 201
+POST {{host}}/api/v1/accounts/{{accountId}}/movements
+Authorization: Bearer {{token}}
+Idempotency-Key: {{chave}}-debito
+Content-Type: application/json
+
+{
+  "type": "Debit",
+  "amount": 400.25,
+  "currency": "BRL",
+  "occurredAt": "2026-11-08T09:30:00Z"
+}
+
+### 2.5 Sem Idempotency-Key. Esperado: 400 (missing-idempotency-key)
+POST {{host}}/api/v1/accounts/{{accountId}}/movements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "Credit",
+  "amount": 10.00,
+  "currency": "BRL",
+  "occurredAt": "2026-11-08T09:30:00Z"
+}
+
+### 2.6 Valor zero. Esperado: 400 (o razão não aceita valor <= 0)
+POST {{host}}/api/v1/accounts/{{accountId}}/movements
+Authorization: Bearer {{token}}
+Idempotency-Key: {{chave}}-zero
+Content-Type: application/json
+
+{
+  "type": "Credit",
+  "amount": 0,
+  "currency": "BRL",
+  "occurredAt": "2026-11-08T09:30:00Z"
+}
+
+### 2.7 Tipo desconhecido. Esperado: 400 (unknown-movement-type)
+POST {{host}}/api/v1/accounts/{{accountId}}/movements
+Authorization: Bearer {{token}}
+Idempotency-Key: {{chave}}-tipo
+Content-Type: application/json
+
+{
+  "type": "Transfer",
+  "amount": 10.00,
+  "currency": "BRL",
+  "occurredAt": "2026-11-08T09:30:00Z"
+}
+
+### 2.8 Conta inexistente. Esperado: 404 (account-not-found)
+POST {{host}}/api/v1/accounts/00000000-0000-7000-8000-000000000001/movements
+Authorization: Bearer {{token}}
+Idempotency-Key: {{chave}}-inexistente
+Content-Type: application/json
+
+{
+  "type": "Credit",
+  "amount": 10.00,
+  "currency": "BRL",
+  "occurredAt": "2026-11-08T09:30:00Z"
+}
+
+
+### ---------------------------------------------------------------------
+### 3. Consultar saldo
+### ---------------------------------------------------------------------
+
+### 3.1 Agora. Esperado: 200, balance 1099.75 (1500.00 - 400.25)
+GET {{host}}/api/v1/accounts/{{accountId}}/balance
+Authorization: Bearer {{token}}
+
+### 3.2 No passado, antes do débito (asOf é inclusivo, em tempo de negócio).
+###     Esperado: 200, balance 1500.00
+GET {{host}}/api/v1/accounts/{{accountId}}/balance?asOf=2026-11-08T00:00:00Z
+Authorization: Bearer {{token}}
+
+### 3.3 Antes da primeira movimentação. Esperado: 200, balance 0 (não é erro)
+GET {{host}}/api/v1/accounts/{{accountId}}/balance?asOf=2026-01-01T00:00:00Z
+Authorization: Bearer {{token}}
+
+### 3.4 No futuro. Esperado: 400 (ainda podem chegar movimentações)
+GET {{host}}/api/v1/accounts/{{accountId}}/balance?asOf=2099-01-01T00:00:00Z
+Authorization: Bearer {{token}}
+
+### 3.5 asOf ilegível. Esperado: 400 explicando o '+' sem codificar (%2B)
+GET {{host}}/api/v1/accounts/{{accountId}}/balance?asOf=ontem
+Authorization: Bearer {{token}}
+
+
+### ---------------------------------------------------------------------
+### 4. Buscar uma movimentação (use o movementId devolvido em 2.1)
+### ---------------------------------------------------------------------
+
+### 4.1 Esperado: 200
+@movementId = COLE_O_movementId
+GET {{host}}/api/v1/accounts/{{accountId}}/movements/{{movementId}}
+Authorization: Bearer {{token}}
+
+
+### ---------------------------------------------------------------------
+### 5. Autorização
+###    Emita tokens com:
+###      dotnet run --project tools/Ledger.DevToken -- --scopes ledger:read --cross-customer
+###      dotnet run --project tools/Ledger.DevToken -- --customer <OUTRO_GUID>
+### ---------------------------------------------------------------------
+
+@tokenSoLeitura = COLE_UM_TOKEN_SO_DE_LEITURA
+@tokenOutroCliente = COLE_UM_TOKEN_DE_OUTRO_CLIENTE
+
+### 5.1 Token só de leitura tentando escrever. Esperado: 403
+POST {{host}}/api/v1/accounts/{{accountId}}/movements
+Authorization: Bearer {{tokenSoLeitura}}
+Idempotency-Key: {{chave}}-403
+Content-Type: application/json
+
+{
+  "type": "Credit",
+  "amount": 10.00,
+  "currency": "BRL",
+  "occurredAt": "2026-11-08T09:30:00Z"
+}
+
+### 5.2 Token de OUTRO cliente lendo esta conta. Esperado: 404, idêntico ao de
+###     uma conta que não existe (a API não revela quais contas existem)
+GET {{host}}/api/v1/accounts/{{accountId}}/balance
+Authorization: Bearer {{tokenOutroCliente}}
+
+### 5.3 Token adulterado. Esperado: 401
+GET {{host}}/api/v1/accounts/{{accountId}}/balance
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.e30.assinatura-falsa
+
+
+### ---------------------------------------------------------------------
+### 6. Documentação interativa (somente em desenvolvimento)
+### ---------------------------------------------------------------------
+
+### 6.1 Abra http://localhost:5080/swagger no navegador.
+### 6.2 O documento OpenAPI:
+GET {{host}}/openapi/v1.json
