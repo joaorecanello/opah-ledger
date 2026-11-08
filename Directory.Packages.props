@@ -23,6 +23,15 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.13" />
   </ItemGroup>
 
+  <ItemGroup Label="Resiliência">
+    <!--
+      Polly.Core, e não o metapacote Polly: só o núcleo de estratégias é usado
+      (circuit breaker e timeout). O resto traz dependências que o projeto não
+      precisa.
+    -->
+    <PackageVersion Include="Polly.Core" Version="8.9.1" />
+  </ItemGroup>
+
   <ItemGroup Label="Persistência">
     <!--
       O EF Core é declarado explicitamente, e não herdado como dependência

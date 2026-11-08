@@ -22,6 +22,16 @@ internal static class LedgerTestData
         PostgresFixture fixture,
         AccountStatus situacao = AccountStatus.Active)
     {
+        // O helper ignora o teste quando não há banco, em vez de deixar quem o
+        // chama lembrar de fazê-lo antes. Cada teste que esqueceu transformava a
+        // ausência de Docker numa falha — e a garantia de que "dotnet test" não
+        // falha por ambiente é requisito do README, não conveniência.
+        //
+        // Foi descoberto em oito testes de uma só vez: todos chamavam este helper
+        // antes de SkipIfUnavailable().
+        ArgumentNullException.ThrowIfNull(fixture);
+        fixture.SkipIfUnavailable();
+
         var conta = situacao == AccountStatus.Active
             ? Account.Open(AccountId.New(), CustomerId.New(), Brl)
             : Account.Rehydrate(AccountId.New(), CustomerId.New(), Brl, situacao);

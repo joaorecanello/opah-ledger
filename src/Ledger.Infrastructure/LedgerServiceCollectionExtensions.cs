@@ -3,6 +3,7 @@ using Ledger.Application.Accounts;
 using Ledger.Application.Balances;
 using Ledger.Application.Movements;
 using Ledger.Infrastructure.Persistence;
+using Ledger.Infrastructure.Resilience;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,9 +42,16 @@ public static class LedgerServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddDbContext<LedgerDbContext>((provider, options) =>
-            options.UseNpgsql(
-                LedgerConnectionString.Resolve(provider.GetRequiredService<IConfiguration>()),
-                npgsql => npgsql.MigrationsHistoryTable("__migrations")));
+        {
+            var configuracao = provider.GetRequiredService<IConfiguration>();
+
+            LedgerDbContextOptions.Apply(
+                options,
+                LedgerConnectionString.Resolve(configuracao),
+                LedgerResilienceOptions.From(configuracao));
+        });
+
+        services.AddSingleton<LedgerDatabaseProbe>();
 
         services.AddScoped<ILedgerRepository, LedgerRepository>();
         services.AddScoped<ISnapshotStore, SnapshotStore>();

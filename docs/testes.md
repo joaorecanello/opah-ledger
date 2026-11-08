@@ -40,7 +40,7 @@ decisão arquitetural**, em vez de apenas exercitar código.
 
 ## O que já roda hoje
 
-220 testes: 87 de domínio, 47 de aplicação, 7 de arquitetura, 79 de integração.
+248 testes: 87 de domínio, 47 de aplicação, 7 de arquitetura, 107 de integração.
 
 Numa máquina sem Docker e sem `LEDGER_TEST_DB`, os testes que dependem de banco
 são **ignorados com mensagem explícita** e `dotnet test` sai com código 0.
@@ -124,7 +124,7 @@ tentativa duplicada não grava nada. O que ele não reproduz é concorrência re
 e é por isso que esse cenário vive nos testes de integração. Um falso que
 fingisse reproduzi-la daria falso-positivo no cenário de maior risco do sistema.
 
-### Testes de integração (79)
+### Testes de integração (107)
 
 Contra PostgreSQL real. Dois deles são smoke do host HTTP e não precisam de
 banco; os outros 25 precisam.
@@ -139,6 +139,10 @@ banco; os outros 25 precisam.
 | `GetBalanceIntegrationTests` | saldo em três instantes, corte inclusivo, precisão em 2.000 somas de fração de centavo, isolamento entre contas, **equivalência entre a soma do SQL e o cálculo do domínio**, e a verificação de que a soma acontece no banco |
 | `LedgerApiTests` | a API de ponta a ponta: `201` com `Location` que responde, `200` de replay com corpo **byte a byte** igual ao original, `409`, `400` com o código do domínio, `404`, o fluxo completo, e pedido malformado |
 | `SnapshotIntegrationTests` | **equivalência entre os dois caminhos de cálculo**, retroatividade invalidando fechamentos, atomicidade da invalidação, reconciliação contra corrupção feita por SQL, e truncar o cache não mudando saldo nenhum |
+| `ResilienceApiTests` | **sem banco algum**: `503` em vez de `500`, `Retry-After`, nada vazado, circuito abrindo e recusando sem consultar o banco, sondas fora do circuito |
+| `ResilienceDatabaseTests` | prontidão `200`, bulkhead entre escrita e leitura com vaga ocupada de verdade, e estouro do tempo da requisição |
+| `AmbiguousCommitTests` | falha de rede no meio do commit, **antes e depois**, nos dois caminhos de escrita: sempre um lançamento |
+| `TransientFailureTests` | o que conta como falha transitória, e o orçamento de tempo do retry |
 | `SystemClockTests` | o relógio não devolve fração de microssegundo, e é sempre UTC |
 
 Três merecem destaque:
@@ -259,15 +263,39 @@ mensagem explícita.
 | Mapeamento trivial de DTO | o compilador já verifica; teste aqui só duplica a declaração |
 | Percentual de cobertura como meta | ver o primeiro parágrafo deste documento |
 
+Três merecem destaque:
+
+- **`Falha_no_commit_resulta_em_exatamente_um_lancamento`** injeta uma falha de
+  rede transitória **dentro da transação do EF**, antes e depois do commit, nos
+  dois caminhos de escrita. É o cenário que justifica ter retry e idempotência
+  juntos: o sistema não sabe quando a falha ocorreu, e não precisa. A asserção
+  distingue os dois destinos pelo número de commits tentados (2 antes, 1 depois),
+  e exige **um lançamento, nunca zero e nunca dois**. A primeira versão contava
+  invocações como se fossem falhas e afirmava o número errado — o valor "errado"
+  era a prova de que o retry rodou.
+- **`Escrita_saturada_nao_derruba_a_leitura`** prova o bulkhead com uma vaga
+  ocupada **de verdade**: um relógio de teste segura a primeira requisição em voo
+  enquanto as outras competem. O atalho óbvio — capacidade zero — não funciona,
+  porque o limitador recusa `PermitLimit` menor que 1; e, mesmo que funcionasse,
+  provaria que uma configuração rejeita tudo, não que uma vaga ocupada faz a
+  seguinte esperar.
+- **`Circuito_abre_apos_falhas_repetidas...`** roda sem banco algum e exige que a
+  terceira requisição venha marcada `circuitOpen: true`: o banco nem foi
+  consultado.
+
 ## A lição desta suíte
 
-Os dois defeitos mais instrutivos do projeto **não** foram encontrados por
+Os defeitos mais instrutivos do projeto **não** foram encontrados por
 testes. Apareceram ao rodar a aplicação à mão, com a suíte inteira verde:
 
 - o corpo do `201` discordava do corpo do replay, porque um era montado do
   pedido e o outro lido do banco;
 - `?asOf=...+00:00` sem codificar devolvia `500`, porque os testes montavam a
   URL em código e nunca produziam uma malformada.
+
+- o retry do EF multiplicava por três a espera de uma falha **lenta**: 0,4 s
+  viravam 7,1 s. Nenhum teste via isso, porque nenhum tinha uma dependência que
+  demora para falhar. Foi a medição com o banco parado que mostrou.
 
 O padrão é o mesmo: **testes exercitam o caminho que quem os escreveu
 imaginou.** Os dois viraram teste depois, e é por isso que validar num ambiente

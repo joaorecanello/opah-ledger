@@ -57,6 +57,11 @@ services:
       context: .
       dockerfile: src/Ledger.Api/Dockerfile
     container_name: ledger-api
+    # Prazo do Docker entre SIGTERM e SIGKILL. Precisa ser MAIOR que o
+    # Ledger:Resilience:ShutdownTimeout da aplicação (30s): se o Docker matasse
+    # antes, o encerramento gracioso seria cortado exatamente quando mais
+    # importa — com requisições em voo.
+    stop_grace_period: 40s
     depends_on:
       db:
         # Espera o banco estar de fato pronto, não apenas o container existir.
@@ -88,6 +93,7 @@ services:
       context: .
       dockerfile: src/Ledger.Worker/Dockerfile
     container_name: ledger-worker
+    stop_grace_period: 40s
     depends_on:
       api:
         # Depende da API, não do banco: é a API que aplica as migrations no

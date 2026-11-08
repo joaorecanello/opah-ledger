@@ -48,8 +48,8 @@ public sealed class LedgerRepository(LedgerDbContext context) : ILedgerRepositor
     {
         ArgumentNullException.ThrowIfNull(movement);
 
-        context.Movements.Add(PersistenceMapper.ToRecord(movement));
-        context.IdempotencyRecords.Add(new IdempotencyRecord
+        var movimentacao = PersistenceMapper.ToRecord(movement);
+        var chave = new IdempotencyRecord
         {
             Key = movement.IdempotencyKey.Value,
             AccountId = movement.AccountId.Value,
@@ -62,7 +62,7 @@ public sealed class LedgerRepository(LedgerDbContext context) : ILedgerRepositor
             // segunda leitura.
             CreatedAt = movement.PostedAt.ToUniversalTime(),
             ExpiresAt = idempotencyExpiresAt.ToUniversalTime(),
-        });
+        };
 
         // Retroatividade se detecta comparando os dois instantes do próprio
         // fato, sem precisar do relógio: se o dia do negócio é anterior ao dia
@@ -73,8 +73,9 @@ public sealed class LedgerRepository(LedgerDbContext context) : ILedgerRepositor
                        < movement.PostedAt.UtcDateTime.Date;
 
         return retroativa
-            ? await GravarComInvalidacaoAsync(movement, cancellationToken).ConfigureAwait(false)
-            : await GravarAsync(cancellationToken).ConfigureAwait(false);
+            ? await GravarComInvalidacaoAsync(movement, movimentacao, chave, cancellationToken)
+                .ConfigureAwait(false)
+            : await GravarAsync(movimentacao, chave, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -190,8 +191,19 @@ public sealed class LedgerRepository(LedgerDbContext context) : ILedgerRepositor
     /// <summary>
     /// Caminho comum: a transação implícita do próprio <c>SaveChanges</c>.
     /// </summary>
-    private async Task<LedgerWriteOutcome> GravarAsync(CancellationToken cancellationToken)
+    /// <remarks>
+    /// O retry do EF cobre este caminho sozinho e com segurança: ele repete o
+    /// <c>SaveChanges</c> inteiro, e as entidades só passam a <c>Unchanged</c>
+    /// quando a gravação é bem-sucedida.
+    /// </remarks>
+    private async Task<LedgerWriteOutcome> GravarAsync(
+        MovementRecord movimentacao,
+        IdempotencyRecord chave,
+        CancellationToken cancellationToken)
     {
+        context.Movements.Add(movimentacao);
+        context.IdempotencyRecords.Add(chave);
+
         try
         {
             // Um único SaveChanges é uma transação: ou as duas linhas entram, ou
@@ -204,9 +216,14 @@ public sealed class LedgerRepository(LedgerDbContext context) : ILedgerRepositor
         }
         catch (DbUpdateException erro) when (EhChaveDeIdempotenciaRepetida(erro))
         {
-            // O rastreador ainda tem as duas entidades em estado "Added". Sem
-            // limpar, um SaveChanges posterior no mesmo contexto tentaria
-            // gravá-las de novo.
+            // Duas origens levam aqui, e as duas têm a mesma resposta correta.
+            // Uma é a duplicata de verdade. A outra é o retry de um commit cuja
+            // confirmação se perdeu: a primeira tentativa gravou, a rede caiu
+            // antes da resposta, e a repetição encontra a própria chave.
+            //
+            // O caso de uso resolve as duas olhando o registro original — se o
+            // conteúdo é o mesmo, devolve a resposta original. É por isso que
+            // repetir é seguro neste sistema.
             context.ChangeTracker.Clear();
             return LedgerWriteOutcome.DuplicateIdempotencyKey;
         }
@@ -214,55 +231,78 @@ public sealed class LedgerRepository(LedgerDbContext context) : ILedgerRepositor
 
     /// <summary>
     /// Caminho retroativo: insere o fato e invalida os fechamentos afetados numa
-    /// transação explícita.
+    /// transação explícita, sob a estratégia de execução do EF.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A transação explícita existe porque a invalidação é um <c>UPDATE</c> em
     /// massa, que o EF executa de imediato e fora do <c>SaveChanges</c>. Se ela
     /// ficasse fora da transação e falhasse, um fechamento que deveria estar
     /// inválido continuaria sendo usado — e a consulta devolveria um saldo errado
     /// <b>sem nenhum erro</b>. É o modo de falha mais perigoso deste sistema.
+    /// </para>
     /// <para>
-    /// Custa duas idas a mais ao banco, e é por isso que o caminho comum não a
-    /// usa.
+    /// <b>O estado é recriado a cada tentativa, e isso não é opcional.</b> Com
+    /// retry ligado, o EF recusa transação iniciada à mão fora de uma estratégia
+    /// de execução. Dentro dela, a armadilha é outra: se a primeira tentativa
+    /// falhar depois de o <c>SaveChanges</c> aceitar as entidades, elas ficam
+    /// <c>Unchanged</c>; a repetição então não gravaria nada e este método
+    /// devolveria <c>Persisted</c> sem ter registrado coisa alguma — perda de
+    /// dinheiro com resposta de sucesso.
+    /// </para>
+    /// <para>
+    /// Daí limpar o rastreador e adicionar as entidades de novo dentro do
+    /// delegado: cada tentativa começa do zero.
     /// </para>
     /// </remarks>
     private async Task<LedgerWriteOutcome> GravarComInvalidacaoAsync(
         Movement movement,
+        MovementRecord movimentacao,
+        IdempotencyRecord chave,
         CancellationToken cancellationToken)
     {
-        await using var transacao = await context.Database
-            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (DbUpdateException erro) when (EhChaveDeIdempotenciaRepetida(erro))
-        {
-            context.ChangeTracker.Clear();
-            await transacao.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            return LedgerWriteOutcome.DuplicateIdempotencyKey;
-        }
-
+        var estrategia = context.Database.CreateExecutionStrategy();
         var diaDoFato = DateOnly.FromDateTime(movement.OccurredAt.UtcDateTime);
 
-        // A partir do dia do fato, não apenas nele: o fechamento é acumulado,
-        // logo um lançamento no dia D muda o saldo de D e de todos os dias
-        // posteriores.
-        await context.BalanceSnapshots
-            .Where(s => s.AccountId == movement.AccountId.Value
-                     && s.AsOfDate >= diaDoFato
-                     && !s.IsStale)
-            .ExecuteUpdateAsync(
-                s => s.SetProperty(x => x.IsStale, true),
-                cancellationToken)
-            .ConfigureAwait(false);
+        return await estrategia.ExecuteAsync(
+            async ct =>
+            {
+                context.ChangeTracker.Clear();
+                context.Movements.Add(movimentacao);
+                context.IdempotencyRecords.Add(chave);
 
-        await transacao.CommitAsync(cancellationToken).ConfigureAwait(false);
-        context.ChangeTracker.Clear();
+                await using var transacao = await context.Database
+                    .BeginTransactionAsync(ct).ConfigureAwait(false);
 
-        return LedgerWriteOutcome.Persisted;
+                try
+                {
+                    await context.SaveChangesAsync(ct).ConfigureAwait(false);
+                }
+                catch (DbUpdateException erro) when (EhChaveDeIdempotenciaRepetida(erro))
+                {
+                    context.ChangeTracker.Clear();
+                    await transacao.RollbackAsync(ct).ConfigureAwait(false);
+                    return LedgerWriteOutcome.DuplicateIdempotencyKey;
+                }
+
+                // A partir do dia do fato, não apenas nele: o fechamento é
+                // acumulado, logo um lançamento no dia D muda o saldo de D e de
+                // todos os dias posteriores.
+                await context.BalanceSnapshots
+                    .Where(s => s.AccountId == movement.AccountId.Value
+                             && s.AsOfDate >= diaDoFato
+                             && !s.IsStale)
+                    .ExecuteUpdateAsync(
+                        s => s.SetProperty(x => x.IsStale, true),
+                        ct)
+                    .ConfigureAwait(false);
+
+                await transacao.CommitAsync(ct).ConfigureAwait(false);
+                context.ChangeTracker.Clear();
+
+                return LedgerWriteOutcome.Persisted;
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static bool EhChaveDeIdempotenciaRepetida(DbUpdateException erro) =>

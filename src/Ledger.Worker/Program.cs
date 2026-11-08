@@ -19,6 +19,13 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddLedger();
 builder.Services.AddSingleton(new SnapshotJobOptions());
+
+// Encerramento gracioso: ao receber SIGTERM, o host sinaliza o cancelamento e
+// espera as passadas em andamento terminarem, até este limite. A consolidação
+// grava um fechamento por vez e é retomável de qualquer ponto, então ser
+// interrompida é inofensivo — mas terminar o dia em curso evita refazê-lo.
+builder.Services.Configure<HostOptions>(options =>
+    options.ShutdownTimeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHostedService<SnapshotConsolidationService>();
 builder.Services.AddHostedService<SnapshotReconciliationService>();
 

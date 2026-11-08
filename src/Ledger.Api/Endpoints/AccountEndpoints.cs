@@ -1,4 +1,5 @@
 using Ledger.Api.Contracts;
+using Ledger.Api.Resilience;
 using Ledger.Application.Accounts;
 using Ledger.Application.Balances;
 
@@ -19,8 +20,10 @@ public static class AccountEndpoints
                 "Existe para que o projeto seja executável sem depender do "
                 + "contexto de Clientes. O cadastro de contas não pertence ao "
                 + "razão; ver a premissa PR-07 na documentação.")
+            .RequireRateLimiting(RateLimitPolicies.Write)
             .Produces<AccountResponse>(StatusCodes.Status201Created)
-            .ProducesProblem(StatusCodes.Status400BadRequest);
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         group.MapGet("/accounts/{accountId:guid}/balance", ConsultarSaldo)
             .WithName("ConsultarSaldo")
@@ -31,9 +34,12 @@ public static class AccountEndpoints
                 + "futuro é recusado, porque movimentações ainda podem ser "
                 + "registradas para aquele período. A resposta informa de onde o "
                 + "número veio.")
+            .RequireRateLimiting(RateLimitPolicies.Read)
             .Produces<BalanceResponse>()
             .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         return group;
     }

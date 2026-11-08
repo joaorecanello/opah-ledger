@@ -56,7 +56,6 @@ escala e a operação.
 
 | Pendente | Onde está desenhado |
 |----------|---------------------|
-| Resiliência: timeouts, retry com jitter, circuit breaker, readiness | [ADR-0008](docs/adr/0008-resiliencia-e-degradacao-declarada.md) |
 | Observabilidade: OpenTelemetry, log estruturado, métricas de negócio | [ADR-0010](docs/adr/0010-observabilidade.md) |
 | Segurança: JWT com escopos, autorização por titularidade, redação de log | [ADR-0009](docs/adr/0009-protecao-de-dados-sensiveis.md) |
 | Outbox transacional | [ADR-0006](docs/adr/0006-sem-broker-no-caminho-de-escrita.md) |
@@ -70,6 +69,52 @@ ADR-0009; a implementação não.
 Há uma consequência prática: **o endpoint de provisionamento de conta é aberto**.
 Ele existe para o projeto ser executável sem o contexto de Clientes
 ([PR-07](docs/premissas.md#pr-07)), e não deveria existir numa implantação real.
+
+## Resiliência
+
+Implementada e verificada (ver [ADR-0008](docs/adr/0008-resiliencia-e-degradacao-declarada.md)):
+`503` com `Retry-After` em vez de `500`, readiness, retry com orçamento de
+tempo, circuito, bulkhead e encerramento gracioso. O que ela **não** cobre:
+
+### O circuito é por instância
+
+Cada instância aprende sozinha que o banco caiu, o que custa algumas requisições
+falhas por instância até o circuito abrir. Compartilhar o estado exigiria uma
+dependência a mais, e ela seria exatamente o tipo de coisa que falha junto com
+o banco. É um custo aceito, não um esquecimento.
+
+O mesmo vale para os limites de capacidade: 200 escritas e 400 leituras
+simultâneas **por instância**, não globais.
+
+### Subir durante uma queda de banco só funciona sem a migração no start
+
+Descoberto ao reiniciar a API com o banco parado: com `MigrateOnStartup`
+ligado, a migração lança e o processo entra em ciclo de reinício. É o
+comportamento do `docker compose`, onde essa opção é um opt-in de
+desenvolvimento, e se recupera sozinho quando o banco volta.
+
+Com a configuração **padrão** — migração desligada, que é a de produção — a API
+sobe normalmente durante a queda: `live` responde `200`, `ready` responde `503`,
+e a instância entra em rotação sozinha quando o banco volta. Verificado.
+
+### Falha de rede injetada, não derrubada em produção
+
+O commit ambíguo é testado injetando a falha dentro da transação do EF, nos dois
+momentos possíveis. O banco foi derrubado de verdade apenas à mão, no `compose`,
+e a recuperação foi observada no log. **Não há teste de caos automatizado** no
+CI, nem contra infraestrutura parecida com a de produção.
+
+### A sondagem de prontidão tem limite de 2 s
+
+Um orquestrador com limite de sondagem menor — o padrão do Kubernetes é 1 s —
+contará uma sondagem lenta como falha de qualquer forma. É o mesmo desfecho
+(instância fora de rotação), só que decidido por quem pergunta em vez de por quem
+responde.
+
+### Sem leitura por réplica
+
+Escrita e leitura usam o mesmo banco. A resposta de saldo já carrega `source` e
+`stale`, então o contrato não muda quando réplicas entrarem.
 
 ## Observabilidade do que já existe
 

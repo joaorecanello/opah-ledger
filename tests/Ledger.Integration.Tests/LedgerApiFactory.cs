@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Ledger.Integration.Tests;
 
@@ -31,9 +33,16 @@ public sealed class LedgerApiFactory : WebApplicationFactory<Program>
     /// liveness, formato de erro — sobem sem banco algum. Uma porta impossível
     /// garante que, se algum deles tocar o banco por acidente, a falha seja
     /// evidente em lugar de silenciosamente usar o banco de outro teste.
+    /// <para>
+    /// O endereço é <c>127.0.0.1</c>, e não <c>localhost</c>, de propósito: no
+    /// Windows, <c>localhost</c> resolve para <c>::1</c> e para <c>127.0.0.1</c>, e
+    /// cada uma recusa a conexão com atraso — medido em cerca de cinco segundos por
+    /// tentativa. Com o endereço direto a recusa é imediata, e os testes que
+    /// dependem de o banco estar fora deixam de custar minutos.
+    /// </para>
     /// </remarks>
     public const string UnreachableConnectionString =
-        "Host=localhost;Port=1;Database=nao-usado;Username=nao-usado;Password=nao-usado";
+        "Host=127.0.0.1;Port=1;Database=nao-usado;Username=nao-usado;Password=nao-usado";
 
     /// <summary>
     /// Banco ao qual a API vai apontar.
@@ -47,6 +56,22 @@ public sealed class LedgerApiFactory : WebApplicationFactory<Program>
     /// </remarks>
     public string ConnectionString { get; init; } = UnreachableConnectionString;
 
+    /// <summary>
+    /// Configuração adicional para o teste, que vence qualquer outra fonte.
+    /// </summary>
+    /// <remarks>
+    /// Serve a limites de resiliência — um breaker que abre com poucas falhas,
+    /// uma capacidade de escrita zerada — sem precisar de um host por cenário.
+    /// </remarks>
+    public IReadOnlyDictionary<string, string?> Settings { get; init; } =
+        new Dictionary<string, string?>();
+
+    /// <summary>
+    /// Substitui serviços do host, para testes que precisam de um ponto de
+    /// controle — por exemplo, segurar uma requisição em voo.
+    /// </summary>
+    public Action<IServiceCollection>? OverrideServices { get; init; }
+
     /// <inheritdoc/>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -55,7 +80,8 @@ public sealed class LedgerApiFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Testing");
 
         builder.ConfigureAppConfiguration(configuration =>
-            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            var valores = new Dictionary<string, string?>
             {
                 ["LEDGER_DB"] = ConnectionString,
                 ["ConnectionStrings:Ledger"] = ConnectionString,
@@ -64,6 +90,19 @@ public sealed class LedgerApiFactory : WebApplicationFactory<Program>
                 // execução. Deixar o host aplicá-las também faria instâncias
                 // concorrentes disputarem o lock de migração.
                 ["Ledger:MigrateOnStartup"] = "false",
-            }));
+            };
+
+            foreach (var (chave, valor) in Settings)
+            {
+                valores[chave] = valor;
+            }
+
+            configuration.AddInMemoryCollection(valores);
+        });
+
+        if (OverrideServices is { } substituicoes)
+        {
+            builder.ConfigureTestServices(substituicoes);
+        }
     }
 }

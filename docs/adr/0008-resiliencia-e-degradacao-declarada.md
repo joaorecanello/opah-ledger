@@ -1,7 +1,7 @@
 # ADR-0008 — Resiliência e degradação declarada
 
-- **Status:** aceito
-- **Data:** 2026-11-07
+- **Status:** aceito, implementado
+- **Data:** 2026-11-07 (implementação: 2026-11-08)
 - **Requisitos relacionados:** RNF-01 (instabilidade), RNF-03 (falhas parciais), RNF-04 (consistência)
 
 ## Problema
@@ -51,15 +51,99 @@ motivos: muda o contrato e cria janela de inconsistência.
 chave de idempotência para repetir sem risco. A responsabilidade fica com quem
 tem a informação para decidir o que fazer.
 
+## O que foi implementado, e o que a medição mudou
+
+Antes de escrever uma linha, derrubei o banco do `compose` e medi o que a API
+fazia. O resultado justificou o ADR inteiro:
+
+| Banco parado | Antes | Depois |
+|---|---|---|
+| `/health/live` | `200` | `200` |
+| `/health/ready` | `404` — não existia | `503` |
+| escrita | **`500`** | `503` + `Retry-After` + `application/problem+json` |
+| leitura | **`500`** | `503` + `Retry-After` |
+
+O `500` é o problema, não o sintoma: ele diz "defeito do servidor", e o chamador
+conclui que repetir não ajuda quando repetir é exatamente a resposta certa. O
+painel acusa bug de código numa falha de infraestrutura. E o texto do erro do
+driver, com host e porta do banco, tem uma chance de vazar na resposta.
+
+Esta seção registra as quatro coisas que a implementação mostrou e que o texto
+original não previa.
+
+### 1. Retry sem orçamento de tempo só adia o erro
+
+A primeira versão usou o retry embutido do EF Core: duas repetições. Medi de
+novo, e a requisição passou a levar **7,1 s**. Cada tentativa gastava cerca de
+dois segundos para falhar — o nome do banco deixava de resolver no DNS do Docker
+— e três tentativas multiplicavam isso.
+
+Retry serve para soluço rápido: uma conexão que o pool descartou, uma rede que
+piscou. Para queda de verdade, só mantém conexões e threads presas por mais
+tempo. O que o retry do EF limita é o *número* de tentativas, não o *tempo*.
+
+A correção é `LedgerExecutionStrategy`: uma estratégia própria, sobre a API
+pública do EF, com a regra **não começa uma tentativa que já nasce estourada**.
+Falha rápida cabe no orçamento (2 s) e é repetida; falha lenta o consome sozinha
+e sobe na hora. Resultado medido: de **7,1 s para ~2,1 s** por requisição, e dois
+testes fixam os dois lados — falha rápida usa as três tentativas, falha lenta
+usa uma.
+
+Efeito colateral bom: a estratégia usa `TransientFailure` para decidir o que
+repetir, a mesma definição que o circuito e o mapeamento para `503` usam. Eram
+três mecanismos e passou a ser uma só noção de "transitório".
+
+### 2. Retry e transação explícita: a armadilha do sucesso falso
+
+Com retry ligado, o EF recusa uma transação iniciada à mão fora de uma
+estratégia de execução — e a escrita retroativa precisa de uma, porque a
+invalidação de fechamentos é um `UPDATE` em massa que roda fora do `SaveChanges`.
+
+A forma ingênua de consertar é perigosa. Se a primeira tentativa falhar
+*depois* de o `SaveChanges` aceitar as entidades, elas ficam `Unchanged`; a
+repetição não grava nada, e o método devolveria `Persisted` sem ter registrado
+coisa alguma. **Perda de dinheiro com resposta de sucesso.**
+
+A saída é recriar o estado a cada tentativa: o delegado limpa o rastreador e
+adiciona as entidades de novo. Há teste para o caminho comum e para o
+retroativo, nos dois momentos possíveis da falha.
+
+### 3. Resposta perdida depois do commit
+
+É o cenário que justifica ter retry e idempotência juntos. Uma queda entre o
+commit e a resposta deixa o cliente sem saber se o lançamento existe. Repetir sem
+proteção duplicaria dinheiro; não repetir perderia o lançamento se a falha foi
+antes.
+
+O sistema não tem como saber *quando* a falha ocorreu, e não precisa. Os dois
+momentos foram injetados dentro da transação do EF, nos dois caminhos de escrita:
+
+| Falha | O que a repetição encontra | Resultado |
+|---|---|---|
+| **antes** do commit | nada gravado | grava, `Registered` |
+| **depois** do commit | a própria chave | viola o unique, `Replayed` |
+
+Nos quatro cenários: **um lançamento, nunca zero e nunca dois.** O número de
+commits tentados distingue os dois destinos (2 antes, 1 depois), e os fechamentos
+são invalidados nos dois casos.
+
+### 4. O circuito conta a história inteira
+
+Medido com o banco parado e 10 leituras em sequência: as oito primeiras levam
+~2 s cada; o circuito abre; a nona e a décima levam **5 ms**. O log registra a
+sequência completa — `ABERTO`, recusas sem consultar o banco, `SEMI-ABERTO`,
+`ABERTO` de novo (a sonda falhou), `SEMI-ABERTO`, `FECHADO` quando o banco
+voltou. A mesma instância se recuperou sozinha, sem reinício.
+
 ## Mecanismos
 
 | Mecanismo | Decisão |
 |-----------|---------|
-| Timeout | explícito em toda operação de I/O. Timeout infinito transforma lentidão de dependência em esgotamento de pool, que é como falha parcial se torna queda total |
-| Retry | com *backoff* exponencial e *jitter*, **apenas** em erro transitório e operação idempotente |
-| Circuit breaker | nas dependências, para parar de bater em porta fechada e dar tempo de recuperação |
-| Bulkhead | pool de leitura separado do de escrita; consulta lenta não esgota a capacidade de registrar |
-| Graceful shutdown | drena requisições em voo antes de encerrar |
+| Timeout | conexão (3 s), comando (10 s) e requisição inteira (15 s, `503` ao estourar). Timeout infinito transforma lentidão de dependência em esgotamento de pool, que é como falha parcial se torna queda total |
+| Retry | até 2 repetições, com *backoff* e *jitter*, **apenas** em erro transitório, dentro de um **orçamento de 2 s**. Seguro porque a escrita é idempotente |
+| Circuit breaker | Polly, por instância: abre com 50% de falha em 8+ requisições na janela de 30 s, por 10 s. Aplicado por filtro de endpoint, então vale para rota nova sem ninguém lembrar |
+| Bulkhead | limites de concorrência **separados** para escrita (200) e leitura (400); o excedente recebe `429` na hora, sem fila |
+| Graceful shutdown | `ShutdownTimeout` de 30 s na aplicação e `stop_grace_period` de 40 s no Docker. Verificado: `docker stop` sai com código `0`, não `137` |
 
 O *jitter* no retry não é refinamento: sem ele, N clientes que falharam ao mesmo
 tempo repetem ao mesmo tempo, e o retry sincronizado reproduz o pico que causou
@@ -78,17 +162,32 @@ banco voltar. O resultado é um ciclo de reinício durante uma indisponibilidade
 de dependência — **falha parcial convertida em queda total**, que é precisamente
 o oposto de RNF-03.
 
-`/health/live` já existe no scaffold e não toca em nada de propósito.
+`/health/live` não toca em nada de propósito. `/health/ready` sonda o banco com
+uma consulta real e tem limite próprio de 2 s.
+
+Os dois ficam **fora** do circuito e dos limites de capacidade, e há teste para
+isso. O orquestrador precisa conseguir perguntar mesmo — e principalmente —
+quando a instância está saturada ou o banco caiu. Se a pergunta fosse recusada
+com `429`, uma instância sobrecarregada pareceria morta e seria reiniciada,
+piorando a sobrecarga que a deixou assim.
+
+A sondagem **não usa o EF Core**, e isso é proposital: o contexto tem retry, e
+uma sondagem por ele esperaria as tentativas antes de admitir que o banco está
+fora. Readiness precisa responder "não" tão rápido quanto "sim".
 
 ## Comportamento sob cada cenário de falha
 
 | Cenário | Escrita | Leitura |
 |---------|---------|---------|
-| Banco primário indisponível | `503` rápido, nada registrado | servida por réplica, com indicação de atualidade na resposta |
+| Banco indisponível | `503` + `Retry-After`, nada registrado | `503` + `Retry-After` |
 | Banco lento | timeout e `503` | timeout e `503` |
-| Worker parado | normal (não depende do worker) | cai no cálculo direto; mais lenta, igualmente correta |
-| Snapshot divergente | normal | reconciliação corrige; métrica alerta |
-| Pico acima da capacidade | `429` com `Retry-After` | `429` com `Retry-After` |
+| Worker parado | normal (não depende do worker) | recua para um fechamento mais antigo ou cai no cálculo direto; mais lenta, igualmente correta |
+| Snapshot divergente | normal | reconciliação corrige |
+| Capacidade esgotada | `429` com `Retry-After` | `429` com `Retry-After` |
+| Circuito aberto | `503` na hora, **sem consultar o banco** | idem |
+
+*Leitura por réplica não foi implementada*: escrita e leitura usam o mesmo
+banco. Ver [LIMITATIONS.md](../../LIMITATIONS.md).
 
 A linha do worker parado é consequência de [ADR-0004](0004-snapshot-de-saldo.md):
 o snapshot ser cache descartável significa que a falha do componente que o

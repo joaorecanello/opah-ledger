@@ -9,7 +9,7 @@ em qualquer ponto do tempo.
 > **Estado atual: solução completa com um comando.** Os dois requisitos
 > funcionais do enunciado, expostos por HTTP, com cache de saldo consolidado e
 > reconciliado por um worker — `docker compose up --build` sobe tudo, sem .NET
-> instalado. 220 testes, 67 deles contra PostgreSQL real.
+> instalado. 248 testes, 77 deles dependem de PostgreSQL real.
 > [Estado atual](#estado-atual) e [LIMITATIONS.md](LIMITATIONS.md) são
 > explícitos sobre o que existe e o que não existe.
 
@@ -238,6 +238,32 @@ Subir o worker (hoje ele sobe e fica ocioso — nenhum job registrado ainda):
 dotnet run --project src/Ledger.Worker
 ```
 
+## Quando o banco cai
+
+O que o sistema faz, medido com o banco do `compose` parado:
+
+| | Sem tratamento | Com tratamento |
+|---|---|---|
+| `GET /health/live` | `200` | `200` — o processo está vivo |
+| `GET /health/ready` | `404` | `503` — fora de rotação |
+| escrita | `500` | `503` + `Retry-After`, nada registrado |
+| leitura | `500` | `503` + `Retry-After` |
+| 9ª leitura em diante | ~2 s cada | **5 ms** — o circuito abriu |
+| banco volta | — | recupera sozinho, **sem reiniciar** |
+
+O `500` dizia "defeito do servidor" e mandava o chamador desistir de uma
+operação que repetiria com sucesso. O `503` diz **repita**, e repetir é seguro
+porque a `Idempotency-Key` garante que um lançamento nunca é registrado duas
+vezes — mesmo quando a falha de rede acontece *depois* do commit, o cenário mais
+difícil e que tem teste próprio.
+
+```bash
+curl -i http://localhost:5080/health/ready
+```
+
+Detalhes e o que a medição mudou no desenho:
+[ADR-0008](docs/adr/0008-resiliencia-e-degradacao-declarada.md).
+
 ## Estado atual
 
 **Existe e está verificado:**
@@ -266,8 +292,12 @@ dotnet run --project src/Ledger.Worker
 - **Empacotamento:** `docker compose up --build` sobe banco, API e worker,
   espera o banco ficar pronto, aplica migrations e deixa a aplicação utilizável.
   Verificado a partir de volume vazio.
-- 220 testes passando: 87 de domínio, 47 de aplicação, 7 de arquitetura,
-  79 de integração (67 contra PostgreSQL real).
+- **Resiliência verificada:** com o banco fora, `503` com `Retry-After` em vez
+  de `500`; `/health/ready` degrada e `/health/live` não; circuito abre e
+  recusa em 5 ms; escrita e leitura têm capacidade separada (`429`); a
+  instância se recupera sozinha quando o banco volta.
+- 248 testes passando: 87 de domínio, 47 de aplicação, 7 de arquitetura,
+  107 de integração (77 dependem de PostgreSQL real).
 - Requisitos decompostos, 14 premissas registradas, 15 ADRs e as limitações
   conhecidas em [LIMITATIONS.md](LIMITATIONS.md).
 
@@ -397,7 +427,7 @@ previsto.
 dotnet test
 ```
 
-220 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
+248 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
 banco em memória não reproduz unique constraint sob concorrência, logo o teste
 de idempotência — o mais importante da suíte — passaria sem provar nada.
 
