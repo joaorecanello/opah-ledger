@@ -60,7 +60,7 @@ fazia. O resultado justificou o ADR inteiro:
 |---|---|---|
 | `/health/live` | `200` | `200` |
 | `/health/ready` | `404` — não existia | `503` |
-| escrita | **`500`** | `503` + `Retry-After` + `application/problem+json` |
+| escrita | **`500`** | `503` + `Retry-After` |
 | leitura | **`500`** | `503` + `Retry-After` |
 
 O `500` é o problema, não o sintoma: ele diz "defeito do servidor", e o chamador
