@@ -22,17 +22,17 @@ requisito de RO-04, não conveniência.
 
 | # | Cenário | Tipo | Por que é crítico | Status |
 |---|---------|------|-------------------|--------|
-| 1 | Mesma `Idempotency-Key` enviada duas vezes resulta em uma movimentação, com resposta idêntica | integração | **duplicar dinheiro é a pior falha deste domínio**: é invisível até a conciliação | **implementado**; falta só o status HTTP |
-| 2 | Mesma chave com conteúdo diferente resulta em `409` e nada persistido | integração | impede adivinhar intenção do chamador | **implementado**; falta só o status HTTP |
-| 3 | 1.000 movimentações concorrentes na mesma conta resultam em saldo igual à soma exata | concorrência | prova empírica de [ADR-0002](adr/0002-ledger-append-only.md); é o bug provável do legado | **20 simultâneas verificadas**; falta a escala |
+| 1 | Mesma `Idempotency-Key` enviada duas vezes resulta em uma movimentação, com resposta idêntica | integração | **duplicar dinheiro é a pior falha deste domínio**: é invisível até a conciliação | **implementado**, inclusive o status HTTP |
+| 2 | Mesma chave com conteúdo diferente resulta em `409` e nada persistido | integração | impede adivinhar intenção do chamador | **implementado**, inclusive o `409` |
+| 3 | 1.000 movimentações concorrentes na mesma conta resultam em saldo igual à soma exata | concorrência | prova empírica de [ADR-0002](adr/0002-ledger-append-only.md); é o bug provável do legado | **implementado**: 1.000 lançamentos, cada um enviado duas vezes ao mesmo tempo, pela API; soma exata |
 | 4 | Saldo `asOf` anterior à primeira movimentação devolve zero, não erro | integração | fronteira clássica | **implementado** |
 | 5 | Saldo `asOf` exatamente no instante de uma movimentação é inclusivo e documentado | integração | ambiguidade que vira discrepância de centavos | **implementado** |
 | 6 | Snapshot é equivalente ao cálculo direto para muitas movimentações em datas aleatórias | propriedade | **a otimização não pode mudar o número** | **implementado** (300 movimentações, 60 dias, 30 cortes) |
 | 7 | Movimentação retroativa invalida snapshots e o saldo segue correto | integração | o caso difícil de [PR-04](premissas.md#pr-04) | **implementado** |
-| 8 | Falha de commit (banco derrubado no meio) não persiste nada e o retry é limpo | integração | atomicidade real, não presumida | **atomicidade no conflito verificada**; falta derrubar o banco |
+| 8 | Falha de commit (banco derrubado no meio) não persiste nada e o retry é limpo | integração | atomicidade real, não presumida | **implementado**: commit perdido simulado (a gravação acontece, a resposta se perde) e retry sem duplicar; banco fora devolve `503` e se recupera |
 | 9 | Soma de um milhão de valores em `decimal` não acumula erro de arredondamento | unitário | precisão monetária | **implementado** |
-| 10 | Requisição sem token ou com escopo errado responde `401`/`403` | integração | RNF-05 | pendente (E13) |
-| 11 | Banco indisponível faz `/health/ready` falhar e `/health/live` continuar OK | integração | RNF-03; a confusão entre os dois converte falha parcial em queda total | pendente (E11) |
+| 10 | Requisição sem token ou com escopo errado responde `401`/`403` | integração | RNF-05 | **implementado** ([ADR-0016](adr/0016-autenticacao-e-titularidade.md)) |
+| 11 | Banco indisponível faz `/health/ready` falhar e `/health/live` continuar OK | integração | RNF-03; a confusão entre os dois converte falha parcial em queda total | **implementado** |
 | 12 | Fronteiras de camada: domínio sem dependência de infraestrutura | arquitetura | protege [ADR-0001](adr/0001-monolito-modular.md) da erosão | **implementado** |
 
 Os cenários 1, 3 e 6 são os que eu mostraria primeiro: cada um **prova uma
@@ -40,8 +40,8 @@ decisão arquitetural**, em vez de apenas exercitar código.
 
 ## O que já roda hoje
 
-315 testes: 87 de domínio, 70 de aplicação, 7 de arquitetura, 151 de integração
-(88 dependem de PostgreSQL real). Inclui autenticação (token ausente, adulterado,
+316 testes: 87 de domínio, 70 de aplicação, 7 de arquitetura, 152 de integração
+(89 dependem de PostgreSQL real). Inclui autenticação (token ausente, adulterado,
 expirado, `alg: none`, confusão de algoritmo), escopos e titularidade da conta,
 verificados no caso de uso e pela API. Inclui métricas, correlação e a prova de que
 nenhum valor, conta, chave de idempotência ou referência externa chega ao log.
@@ -246,7 +246,7 @@ problema. Sem a variável e sem Docker, eles são **ignorados**.
 | NetArchTest | regras de dependência entre tipos |
 | `Microsoft.AspNetCore.Mvc.Testing` | sobe a API em memória: sem porta a alocar, sem espera por readiness, sem flakiness de startup no CI |
 | Testcontainers (E06) | PostgreSQL **real** |
-| NBomber (E14) | carga leve, com evidências versionadas no repositório |
+| Teste de escala em xUnit | em vez de uma ferramenta de carga: o que importa é a **correção** sob concorrência (soma exata, sem duplicata), e isso é asserção, não relatório. Os números de vazão ficam em "Desempenho medido" abaixo, como medição e não como limite |
 
 ### Por que PostgreSQL real e não banco em memória
 
@@ -311,3 +311,23 @@ limpo é etapa do plano e não formalidade.
 - [ ] `dotnet test` verde
 - [ ] `docker compose up` seguido das chamadas do README reproduz o fluxo completo
 - [ ] os 12 cenários acima com teste nomeado
+
+## Desempenho medido
+
+Uma execução do teste de escala (2.000 requisições HTTP: 1.000 lançamentos, cada um
+duas vezes ao mesmo tempo, **todos na mesma conta**, paralelismo 64), num notebook de
+desenvolvimento com PostgreSQL em container no WSL, duas repetições:
+
+| Medida | Resultado |
+|--------|-----------|
+| Vazão | 210 a 223 requisições/s |
+| Latência p50 / p95 / p99 | ~245 ms / ~480 ms / 1,2 a 1,5 s |
+| Corretude | 1.000 movimentações, soma exata, nenhuma duplicata |
+
+Leia com cuidado. **Não é um teste de carga**: é um piso medido numa máquina
+modesta, com banco e cliente disputando a mesma CPU, e a latência inclui a fila no
+cliente (64 em voo). Não há limite de latência como asserção, porque limite de tempo
+em teste automatizado é flaky por definição. O que o resultado sustenta é que
+**concorrência na mesma conta não perde nem duplica dinheiro**; o que não sustenta é
+qualquer afirmação de capacidade em produção. Para reproduzir e ver a linha:
+`LEDGER_SCALE_REPORT=arquivo.txt dotnet test`.

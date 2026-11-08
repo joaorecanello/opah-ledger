@@ -93,12 +93,12 @@ correspondente, para que quem procurar o tema encontre:
 
 | Requisito | Decisão que o endereça | Como é verificado |
 |-----------|------------------------|-------------------|
-| RF-01 | [ADR-0002](adr/0002-ledger-append-only.md) ledger append-only | testes de registro de movimentação (E06) |
-| RF-02 | [ADR-0004](adr/0004-snapshot-de-saldo.md) snapshot + delta | teste de equivalência snapshot ≡ cálculo direto (E10) |
-| RNF-01 | [ADR-0008](adr/0008-resiliencia-e-degradacao-declarada.md) | teste de readiness degradando com banco fora (E11) |
-| RNF-02 | [ADR-0004](adr/0004-snapshot-de-saldo.md), [ADR-0007](adr/0007-ordenacao-do-ledger.md) | teste de carga leve (E14) |
-| RNF-03 | [ADR-0008](adr/0008-resiliencia-e-degradacao-declarada.md) | teste de falha de commit (E06) |
-| RNF-04 | [ADR-0002](adr/0002-ledger-append-only.md), [ADR-0003](adr/0003-idempotencia-como-contrato.md) | teste de 1.000 escritas concorrentes com soma exata (E14) |
+| RF-01 | [ADR-0002](adr/0002-ledger-append-only.md) ledger append-only | testes de registro de movimentação |
+| RF-02 | [ADR-0004](adr/0004-snapshot-de-saldo.md) snapshot + delta | teste de equivalência snapshot ≡ cálculo direto |
+| RNF-01 | [ADR-0008](adr/0008-resiliencia-e-degradacao-declarada.md) | teste de readiness degradando com banco fora |
+| RNF-02 | [ADR-0004](adr/0004-snapshot-de-saldo.md), [ADR-0007](adr/0007-ordenacao-do-ledger.md) | teste de escala com 1.000 lançamentos concorrentes ([docs/testes.md](testes.md#desempenho-medido)) |
+| RNF-03 | [ADR-0008](adr/0008-resiliencia-e-degradacao-declarada.md) | teste de falha de commit |
+| RNF-04 | [ADR-0002](adr/0002-ledger-append-only.md), [ADR-0003](adr/0003-idempotencia-como-contrato.md) | teste de 1.000 escritas concorrentes com soma exata, com retry simultâneo |
 | RNF-05 | [ADR-0009](adr/0009-protecao-de-dados-sensiveis.md) | testes de autenticação, de titularidade e de redação de log (E12, E13) — [ADR-0016](adr/0016-autenticacao-e-titularidade.md) |
 | RNF-06 | esta documentação, [ADR-0001](adr/0001-monolito-modular.md) | testes de arquitetura, que já rodam |
 | RNF-07 | [ADR-0002](adr/0002-ledger-append-only.md), [ADR-0003](adr/0003-idempotencia-como-contrato.md), [ADR-0007](adr/0007-ordenacao-do-ledger.md) | testes de concorrência e idempotência |

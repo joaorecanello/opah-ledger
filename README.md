@@ -9,7 +9,7 @@ em qualquer ponto do tempo.
 > **Estado atual: solução completa com um comando.** Os dois requisitos
 > funcionais do enunciado, expostos por HTTP, com cache de saldo consolidado e
 > reconciliado por um worker — `docker compose up --build` sobe tudo, sem .NET
-> instalado. 315 testes, 88 deles dependem de PostgreSQL real.
+> instalado. 316 testes, 89 deles dependem de PostgreSQL real.
 > [Estado atual](#estado-atual) e [LIMITATIONS.md](LIMITATIONS.md) são
 > explícitos sobre o que existe e o que não existe.
 
@@ -73,11 +73,12 @@ Toda no repositório, conforme o requisito obrigatório.
 | Documento | Conteúdo |
 |-----------|----------|
 | [docs/requisitos.md](docs/requisitos.md) | requisitos funcionais, não funcionais e restrições, rastreados ao enunciado |
-| [docs/premissas.md](docs/premissas.md) | as 13 lacunas do enunciado, a premissa adotada, o impacto se estiver errada e a pergunta que eu faria |
+| [docs/premissas.md](docs/premissas.md) | as 14 lacunas do enunciado, a premissa adotada, o impacto se estiver errada e a pergunta que eu faria |
 | [docs/arquitetura.md](docs/arquitetura.md) | diagramas C4 em três níveis e modelo de dados |
 | [docs/fluxos.md](docs/fluxos.md) | sequência dos dois casos de uso, incluindo retry, conflito e movimentação retroativa |
-| [docs/adr/](docs/adr/) | 11 decisões arquiteturais, cada uma com alternativas, trade-offs e gatilho de revisão |
+| [docs/adr/](docs/adr/) | 16 decisões arquiteturais, cada uma com alternativas, trade-offs e gatilho de revisão |
 | [docs/testes.md](docs/testes.md) | estratégia de testes, os 12 cenários críticos por ordem de risco, e os dois defeitos que a suíte não pegou |
+| [docs/apresentacao.md](docs/apresentacao.md) | roteiro para explicar a solução: cinco minutos, demonstração e as perguntas difíceis |
 | [LIMITATIONS.md](LIMITATIONS.md) | o que não está resolvido, por quê, e o que eu faria com mais tempo |
 
 **Se você tem cinco minutos:** [ADR-0002](docs/adr/0002-ledger-append-only.md) e
@@ -94,14 +95,18 @@ Há dois caminhos. O primeiro **não exige .NET instalado**.
 docker compose up --build
 ```
 
-Isso sobe PostgreSQL 18 e a API, espera o banco ficar de fato pronto, aplica as
-migrations e deixa a API respondendo em `http://localhost:5080`. Para conferir:
+Isso sobe PostgreSQL 18, a API e o worker, espera o banco ficar de fato pronto,
+aplica as migrations e deixa a API respondendo em `http://localhost:5080`. Para conferir:
 
 ```bash
 curl http://localhost:5080/health/live
 ```
 
 Resposta esperada: `{"status":"live"}`
+
+As rotas de negócio exigem token; veja [Exercitando a API](#exercitando-a-api) para
+emitir um em um comando. A chave de assinatura padrão do compose é **pública** e
+serve só a ambiente local (defina `LEDGER_AUTH_KEY` em qualquer outro).
 
 Verificado a partir de um volume vazio: `docker compose down -v` seguido de
 `docker compose up --build` deixa a aplicação utilizável sem nenhum passo
@@ -306,8 +311,11 @@ Detalhes e o que a medição mudou no desenho:
   de `500`; `/health/ready` degrada e `/health/live` não; circuito abre e
   recusa em 5 ms; escrita e leitura têm capacidade separada (`429`); a
   instância se recupera sozinha quando o banco volta.
-- 315 testes passando: 87 de domínio, 70 de aplicação, 7 de arquitetura,
-  151 de integração (88 dependem de PostgreSQL real).
+- 316 testes passando: 87 de domínio, 70 de aplicação, 7 de arquitetura,
+  152 de integração (89 dependem de PostgreSQL real).
+- **Concorrência verificada em escala:** 1.000 lançamentos na mesma conta, cada
+  um enviado duas vezes ao mesmo tempo, pela API; soma exata, nenhuma duplicata
+  (medição e ressalvas em [docs/testes.md](docs/testes.md#desempenho-medido)).
 - **Segurança verificada:** JWT com escopos, titularidade da conta decidida no caso
   de uso (conta alheia responde como inexistente), sem modo aberto, token ausente do
   log; ver [ADR-0016](docs/adr/0016-autenticacao-e-titularidade.md).
@@ -377,13 +385,19 @@ src/
   Ledger.Application     casos de uso e portas (interfaces)
     Abstractions/          IClock, ILedgerRepository, política temporal
     Movements/             RegisterMovement, RequestFingerprint
-    Balances/              GetBalance
+    Balances/              GetBalance, consolidação e reconciliação de snapshots
     Accounts/              OpenAccount, GetMovement
+    Security/              AccessScope: a que contas o chamador chega
+    Observability/         métricas de negócio, referência opaca para log
   Ledger.Infrastructure  adaptadores
     Persistence/           DbContext, records, migrations, mapeamento explícito
+    Telemetry/             OpenTelemetry, redação de rota nos traces
   Ledger.Api             host HTTP
     Contracts/             DTOs de requisição e resposta
     Endpoints/             rotas v1
+    Security/              JWT, escopos, políticas
+    Resilience/            circuito, limites de capacidade, readiness
+    Observability/         correlação, rótulo de rota seguro
     LedgerProblems         desfecho de negócio para ProblemDetails
   Ledger.Worker          host de background: consolidação, reconciliação, outbox
 tests/
@@ -391,6 +405,8 @@ tests/
   Ledger.Application.Tests   casos de uso com portas falsas em memória
   Ledger.Architecture.Tests  fronteiras de camada e proibição de ponto flutuante
   Ledger.Integration.Tests   API em memória e PostgreSQL real via Testcontainers
+tools/
+  Ledger.DevToken            emite tokens JWT de desenvolvimento
 docs/
   adr/                       decisões arquiteturais
 docker-compose.yml       PostgreSQL, API e worker, um comando
@@ -442,7 +458,7 @@ previsto.
 dotnet test
 ```
 
-315 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
+316 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
 banco em memória não reproduz unique constraint sob concorrência, logo o teste
 de idempotência — o mais importante da suíte — passaria sem provar nada.
 
