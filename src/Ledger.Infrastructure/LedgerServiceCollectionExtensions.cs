@@ -46,13 +46,18 @@ public static class LedgerServiceCollectionExtensions
                 npgsql => npgsql.MigrationsHistoryTable("__migrations")));
 
         services.AddScoped<ILedgerRepository, LedgerRepository>();
+        services.AddScoped<ISnapshotStore, SnapshotStore>();
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton(new RegisterMovementOptions());
         services.AddSingleton(new GetBalanceOptions());
+        services.AddSingleton(new ConsolidateSnapshotsOptions());
+        services.AddSingleton(new ReconcileSnapshotsOptions());
         services.AddScoped<RegisterMovementHandler>();
         services.AddScoped<GetBalanceHandler>();
         services.AddScoped<GetMovementHandler>();
         services.AddScoped<OpenAccountHandler>();
+        services.AddScoped<ConsolidateSnapshotsHandler>();
+        services.AddScoped<ReconcileSnapshotsHandler>();
 
         return services;
     }

@@ -16,10 +16,13 @@ public sealed class RegisterMovementHandlerTests
 {
     private static readonly DateTimeOffset Agora = new(2026, 11, 8, 12, 0, 0, TimeSpan.Zero);
 
-    private readonly FakeLedgerRepository _repositorio = new();
+    private readonly FakeSnapshotStore _snapshots = new();
+    private readonly FakeLedgerRepository _repositorio;
     private readonly FixedClock _relogio = new(Agora);
     private readonly Account _conta =
         Account.Open(AccountId.New(), CustomerId.New(), Currency.Brl);
+
+    public RegisterMovementHandlerTests() => _repositorio = new FakeLedgerRepository(_snapshots);
 
     private RegisterMovementHandler Criar(RegisterMovementOptions? opcoes = null)
     {

@@ -47,4 +47,30 @@ public static class LedgerTimePolicy
     /// </remarks>
     public static DateTimeOffset Truncate(DateTimeOffset instant) =>
         new(instant.Ticks - (instant.Ticks % TicksPerMicrosecond), instant.Offset);
+
+    /// <summary>Primeiro instante de um dia, em UTC.</summary>
+    public static DateTimeOffset StartOfDay(DateOnly day) =>
+        new(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+    /// <summary>
+    /// Último instante representável de um dia, em UTC.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// É o começo do dia seguinte menos <b>um microssegundo</b>, não menos um
+    /// tick. A precisão do armazenamento é o microssegundo, e usar um tick
+    /// deixaria uma fenda de 900 nanossegundos entre este instante e
+    /// <see cref="StartOfDay"/> do dia seguinte — uma movimentação que caísse
+    /// nela não entraria em nenhum dos dois intervalos e desapareceria do saldo.
+    /// </para>
+    /// <para>
+    /// A regra vive aqui, e não em cada chamador, porque ela aparece em três
+    /// lugares — consulta de saldo, consolidação e reconciliação — e os três
+    /// precisam concordar exatamente. Fronteira de intervalo calculada de forma
+    /// ligeiramente diferente em dois lugares é um lançamento contado duas vezes
+    /// ou nenhuma.
+    /// </para>
+    /// </remarks>
+    public static DateTimeOffset EndOfDay(DateOnly day) =>
+        StartOfDay(day.AddDays(1)).AddTicks(-TicksPerMicrosecond);
 }

@@ -38,14 +38,19 @@ obviamente correta e porque me dá a referência de verdade: o teste da otimiza�
 
 Otimizar sem ter o resultado correto medido antes é como refatorar sem teste.
 
-> **Estado da implementação.** A alternativa 1 está pronta e em uso: a consulta
-> faz uma única agregação no banco, filtrada pelo índice de conta e instante, e
-> devolve `source: "DirectSum"`.
+> **Estado da implementação: as duas alternativas estão prontas.** A consulta
+> usa o fechamento quando há um aproveitável (`source: "SnapshotPlusDelta"`) e
+> soma o histórico quando não há (`source: "DirectSum"`). O worker consolida os
+> dias encerrados e reconcilia o cache contra o razão.
 >
-> Ela já vem com o oráculo montado — um teste gera 120 movimentações em datas
-> aleatórias, soma pelo banco e pelo `BalanceCalculator` do domínio, e exige o
-> mesmo número. Quando o snapshot entrar, é esse mesmo teste, com o terceiro
-> caminho somado à comparação.
+> O oráculo saiu junto: um teste gera 300 movimentações espalhadas por 60 dias,
+> consolida, e compara os dois caminhos em 30 instantes diferentes exigindo
+> igualdade de valor **e** de contagem. Qualquer discrepância — numa fronteira
+> de dia, num arredondamento, num intervalo meio aberto — falha ali.
+>
+> Há também `UseSnapshots = false`, que força o cálculo direto. Serve ao teste
+> de equivalência e serve à operação: na suspeita sobre o cache, desligar
+> devolve o caminho obviamente correto **sem deploy de código**.
 
 **Alternativa 2 reintroduz o pecado de ADR-0002 pela porta dos fundos.** Um saldo
 materializado mutável pode divergir da verdade sem ninguém notar. A diferença em
@@ -92,13 +97,29 @@ porque um erro aqui produz saldo histórico errado **sem erro visível**.
 Tratamento:
 
 1. O registro retroativo marca como *stale* os snapshots da conta a partir
-   daquela data.
-2. Consulta que cai numa janela *stale* usa o caminho da alternativa 1 —
-   correto e mais lento.
-3. O worker recalcula os snapshots afetados em segundo plano.
+   daquela data — **na mesma transação da gravação do fato**. Se a marcação
+   ficasse fora e falhasse, um fechamento inválido continuaria sendo usado e a
+   consulta devolveria saldo errado sem nenhum erro. É o modo de falha mais
+   perigoso deste sistema, e há teste verificando que uma tentativa duplicada
+   recusada não invalida fechamento nenhum.
+2. A consulta **recua para o fechamento mais recente que ainda vale**, e soma o
+   delta desde ele.
+3. O worker recalcula os dias afetados em segundo plano, a partir do mais antigo
+   que ficou obsoleto.
 
 O princípio: **correto sempre, rápido quase sempre.** Nunca o contrário. A
 degradação é de latência, nunca de valor.
+
+> **Refinamento que apareceu na implementação.** Este ADR dizia que a consulta
+> numa janela obsoleta cairia no cálculo direto — tudo ou nada. Recuar para o
+> fechamento válido anterior é estritamente melhor: a degradação passa a ser
+> **proporcional ao quanto a retroatividade alcançou**, não total. Um lançamento
+> datado de ontem, numa conta com cinco anos de histórico, custa a soma de um
+> dia em lugar da soma de cinco anos.
+>
+> A resposta sinaliza isso em `stale: true`. O número é correto nos dois casos; o
+> campo diz a quem consome que aquela resposta custou mais caro e que houve
+> atividade retroativa no período.
 
 ## Verificação contínua
 

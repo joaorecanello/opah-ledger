@@ -6,11 +6,12 @@ Razão contábil para movimentações financeiras de clientes de um banco digita
 registra créditos e débitos em contas e responde a posição consolidada de saldo
 em qualquer ponto do tempo.
 
-> **Estado atual: solução demonstrável com um comando.** Os dois requisitos
-> funcionais do enunciado estão implementados, expostos por HTTP e empacotados —
-> `docker compose up --build` sobe tudo, sem .NET instalado. 200 testes, 61
-> deles contra PostgreSQL real. A seção [Estado atual](#estado-atual) é
-> explícita sobre o que existe e o que não existe.
+> **Estado atual: solução completa com um comando.** Os dois requisitos
+> funcionais do enunciado, expostos por HTTP, com cache de saldo consolidado e
+> reconciliado por um worker — `docker compose up --build` sobe tudo, sem .NET
+> instalado. 220 testes, 67 deles contra PostgreSQL real.
+> [Estado atual](#estado-atual) e [LIMITATIONS.md](LIMITATIONS.md) são
+> explícitos sobre o que existe e o que não existe.
 
 ## O problema
 
@@ -77,6 +78,7 @@ Toda no repositório, conforme o requisito obrigatório.
 | [docs/fluxos.md](docs/fluxos.md) | sequência dos dois casos de uso, incluindo retry, conflito e movimentação retroativa |
 | [docs/adr/](docs/adr/) | 11 decisões arquiteturais, cada uma com alternativas, trade-offs e gatilho de revisão |
 | [docs/testes.md](docs/testes.md) | estratégia de testes, os 12 cenários críticos por ordem de risco, e os dois defeitos que a suíte não pegou |
+| [LIMITATIONS.md](LIMITATIONS.md) | o que não está resolvido, por quê, e o que eu faria com mais tempo |
 
 **Se você tem cinco minutos:** [ADR-0002](docs/adr/0002-ledger-append-only.md) e
 [ADR-0003](docs/adr/0003-idempotencia-como-contrato.md). Todas as outras decisões
@@ -154,8 +156,8 @@ documentação, independente de como foi iniciada.
 A especificação OpenAPI fica em `http://localhost:5080/openapi/v1.json` (apenas
 em ambiente de desenvolvimento).
 
-Subir o worker (hoje ele sobe e fica ocioso — nenhum job registrado ainda; ele
-entra no compose quando tiver trabalho):
+Subir o worker, que consolida o fechamento dos dias encerrados e reconcilia o
+cache contra o razão:
 
 ```bash
 dotnet run --project src/Ledger.Worker
@@ -258,12 +260,16 @@ dotnet run --project src/Ledger.Worker
   banco, com a equivalência contra o cálculo do domínio verificada por teste.
 - **API REST v1** com OpenAPI, todos os erros em ProblemDetails (RFC 9457) e o
   `Location` do `201` apontando para um recurso que responde.
-- **Empacotamento:** `docker compose up --build` sobe banco e API, espera o
-  banco ficar pronto, aplica migrations e deixa a aplicação utilizável.
+- **Cache de saldo:** fechamento diário consolidado por um worker, invalidado
+  por movimentação retroativa **na mesma transação** da gravação, e reconciliado
+  contra o razão com autocorreção.
+- **Empacotamento:** `docker compose up --build` sobe banco, API e worker,
+  espera o banco ficar pronto, aplica migrations e deixa a aplicação utilizável.
   Verificado a partir de volume vazio.
-- 200 testes passando: 87 de domínio, 33 de aplicação, 7 de arquitetura,
-  73 de integração (61 contra PostgreSQL real).
-- Requisitos decompostos, 14 premissas registradas e 15 ADRs escritas.
+- 220 testes passando: 87 de domínio, 47 de aplicação, 7 de arquitetura,
+  79 de integração (67 contra PostgreSQL real).
+- Requisitos decompostos, 14 premissas registradas, 15 ADRs e as limitações
+  conhecidas em [LIMITATIONS.md](LIMITATIONS.md).
 
 **Não existe ainda:**
 - Consulta de saldo consolidado.
@@ -342,8 +348,9 @@ tests/
   Ledger.Integration.Tests   API em memória e PostgreSQL real via Testcontainers
 docs/
   adr/                       decisões arquiteturais
-docker-compose.yml       PostgreSQL e API, um comando
-src/Ledger.Api/Dockerfile  build em dois estágios, usuário sem privilégio
+docker-compose.yml       PostgreSQL, API e worker, um comando
+src/*/Dockerfile         build em dois estágios, usuário sem privilégio
+LIMITATIONS.md           o que não está resolvido, por quê, e o que eu faria
 ```
 
 As setas de dependência apontam `Api`/`Worker` → `Infrastructure` →
@@ -390,7 +397,7 @@ previsto.
 dotnet test
 ```
 
-200 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
+220 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
 banco em memória não reproduz unique constraint sob concorrência, logo o teste
 de idempotência — o mais importante da suíte — passaria sem provar nada.
 

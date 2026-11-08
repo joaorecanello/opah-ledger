@@ -83,5 +83,26 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  worker:
+    build:
+      context: .
+      dockerfile: src/Ledger.Worker/Dockerfile
+    container_name: ledger-worker
+    depends_on:
+      api:
+        # Depende da API, não do banco: é a API que aplica as migrations no
+        # compose, e o worker precisa do esquema para a primeira passada. Sem
+        # isso ele falharia, logaria e esperaria a próxima cadência — uma
+        # janela de uma hora sem consolidação, por nada.
+        condition: service_healthy
+    environment:
+      LEDGER_DB: "Host=db;Port=5432;Database=ledger;Username=ledger;Password=ledger"
+    # Sem healthcheck e sem porta: este processo não serve nada.
+    #
+    # E não está no caminho crítico de nada: se ele estiver parado, a escrita
+    # funciona e a consulta de saldo recua para um fechamento mais antigo ou
+    # para o cálculo direto. Mais lenta, igualmente correta.
+    restart: unless-stopped
+
 volumes:
   ledger-db-data:

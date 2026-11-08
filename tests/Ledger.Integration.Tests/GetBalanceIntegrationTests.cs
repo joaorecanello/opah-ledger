@@ -28,8 +28,10 @@ public sealed class GetBalanceIntegrationTests(PostgresFixture fixture)
 
     private static string NovaChave() => $"chave-{Guid.CreateVersion7():N}";
 
-    private static GetBalanceHandler Consulta(LedgerDbContext contexto) =>
-        new(new LedgerRepository(contexto), new SystemClock());
+    private static GetBalanceHandler Consulta(
+        LedgerDbContext contexto,
+        GetBalanceOptions? opcoes = null) =>
+        new(new LedgerRepository(contexto), new SnapshotStore(contexto), new SystemClock(), opcoes);
 
     private static async Task RegistrarAsync(
         PostgresFixture fixture,

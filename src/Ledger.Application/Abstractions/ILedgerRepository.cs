@@ -89,6 +89,32 @@ public interface ILedgerRepository
     /// </remarks>
     Task<Movement?> FindMovementAsync(MovementId movementId, CancellationToken cancellationToken);
 
+    /// <summary>Lista os identificadores de todas as contas.</summary>
+    /// <remarks>
+    /// <b>Limitação conhecida.</b> Sem paginação, isto não serve ao volume
+    /// assumido em PR-02: dez milhões de contas numa lista em memória. Existe
+    /// para a consolidação funcionar e ser verificável agora.
+    /// <para>
+    /// Uma implementação de produção processaria em lotes e, melhor ainda,
+    /// consultaria apenas contas com movimentação posterior ao último snapshot —
+    /// o que transforma a varredura num conjunto proporcional à atividade do
+    /// dia, não ao total de clientes. Está registrado em LIMITATIONS.md.
+    /// </para>
+    /// </remarks>
+    Task<IReadOnlyList<AccountId>> ListAccountIdsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Data da movimentação mais antiga da conta, ou <c>null</c> se não houver
+    /// nenhuma.
+    /// </summary>
+    /// <remarks>
+    /// Define onde a consolidação começa numa conta que nunca teve snapshot.
+    /// Usa o tempo de negócio, como todo o resto da consulta temporal.
+    /// </remarks>
+    Task<DateOnly?> FindFirstMovementDateAsync(
+        AccountId accountId,
+        CancellationToken cancellationToken);
+
     /// <summary>Persiste uma conta nova.</summary>
     /// <remarks>
     /// O cadastro de contas pertence a outro contexto delimitado
@@ -108,6 +134,13 @@ public interface ILedgerRepository
     /// <see cref="LedgerWriteOutcome.Persisted"/> ou
     /// <see cref="LedgerWriteOutcome.DuplicateIdempotencyKey"/>.
     /// </returns>
+    /// <remarks>
+    /// A implementação também marca como obsoletos os snapshots afetados, **na
+    /// mesma transação**. Isso não é detalhe de otimização: se a marcação ficar
+    /// fora e falhar, um snapshot que deveria estar inválido continua sendo
+    /// usado, e a consulta devolve um saldo errado sem nenhum erro. Ou as duas
+    /// coisas acontecem, ou nenhuma.
+    /// </remarks>
     Task<LedgerWriteOutcome> TryRegisterAsync(
         Movement movement,
         string requestFingerprint,
@@ -122,16 +155,22 @@ public interface ILedgerRepository
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Soma as movimentações da conta ocorridas <b>até</b> o instante informado.
+    /// Soma as movimentações da conta ocorridas num intervalo.
     /// </summary>
     /// <param name="accountId">Conta.</param>
-    /// <param name="asOf">
-    /// Instante de corte, <b>inclusivo</b>: uma movimentação cujo
-    /// <c>OccurredAt</c> é exatamente este instante entra na soma.
+    /// <param name="inclusiveFrom">
+    /// Início do intervalo, <b>inclusivo</b>. <c>null</c> significa desde o
+    /// começo do histórico.
+    /// </param>
+    /// <param name="inclusiveTo">
+    /// Fim do intervalo, <b>inclusivo</b>: uma movimentação cujo
+    /// <c>OccurredAt</c> é exatamente este instante entra na soma. Ambiguidade
+    /// nisso é o que vira discrepância de centavos entre dois sistemas que leem
+    /// o mesmo razão.
     /// </param>
     /// <param name="cancellationToken">Token de cancelamento.</param>
     /// <returns>
-    /// A soma e a contagem. Conta sem movimentação devolve zero e zero — não
+    /// A soma e a contagem. Intervalo sem movimentação devolve zero e zero — não
     /// erro, porque saldo zero é a resposta correta para uma conta sem
     /// lançamentos.
     /// </returns>
@@ -139,9 +178,15 @@ public interface ILedgerRepository
     /// O corte usa <c>OccurredAt</c>, o tempo de negócio: "qual era meu saldo na
     /// sexta" pergunta sobre fatos, não sobre o que o sistema já havia
     /// registrado. Ver PR-04.
+    /// <para>
+    /// O intervalo existe para o caminho de snapshot: com um fechamento de
+    /// período em mãos, a consulta soma apenas o delta desde ele, em lugar do
+    /// histórico inteiro.
+    /// </para>
     /// </remarks>
-    Task<LedgerSum> SumUpToAsync(
+    Task<LedgerSum> SumRangeAsync(
         AccountId accountId,
-        DateTimeOffset asOf,
+        DateTimeOffset? inclusiveFrom,
+        DateTimeOffset inclusiveTo,
         CancellationToken cancellationToken);
 }

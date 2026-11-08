@@ -27,8 +27,8 @@ requisito de RO-04, não conveniência.
 | 3 | 1.000 movimentações concorrentes na mesma conta resultam em saldo igual à soma exata | concorrência | prova empírica de [ADR-0002](adr/0002-ledger-append-only.md); é o bug provável do legado | **20 simultâneas verificadas**; falta a escala |
 | 4 | Saldo `asOf` anterior à primeira movimentação devolve zero, não erro | integração | fronteira clássica | **implementado** |
 | 5 | Saldo `asOf` exatamente no instante de uma movimentação é inclusivo e documentado | integração | ambiguidade que vira discrepância de centavos | **implementado** |
-| 6 | Snapshot é equivalente ao cálculo direto para 10.000 movimentações em datas aleatórias | propriedade | **a otimização não pode mudar o número** | **oráculo pronto** (domínio ≡ SQL); falta o snapshot |
-| 7 | Movimentação retroativa invalida snapshots e o saldo segue correto | integração | o caso difícil de [PR-04](premissas.md#pr-04) | pendente (E10) |
+| 6 | Snapshot é equivalente ao cálculo direto para muitas movimentações em datas aleatórias | propriedade | **a otimização não pode mudar o número** | **implementado** (300 movimentações, 60 dias, 30 cortes) |
+| 7 | Movimentação retroativa invalida snapshots e o saldo segue correto | integração | o caso difícil de [PR-04](premissas.md#pr-04) | **implementado** |
 | 8 | Falha de commit (banco derrubado no meio) não persiste nada e o retry é limpo | integração | atomicidade real, não presumida | **atomicidade no conflito verificada**; falta derrubar o banco |
 | 9 | Soma de um milhão de valores em `decimal` não acumula erro de arredondamento | unitário | precisão monetária | **implementado** |
 | 10 | Requisição sem token ou com escopo errado responde `401`/`403` | integração | RNF-05 | pendente (E13) |
@@ -40,7 +40,7 @@ decisão arquitetural**, em vez de apenas exercitar código.
 
 ## O que já roda hoje
 
-200 testes: 87 de domínio, 33 de aplicação, 7 de arquitetura, 73 de integração.
+220 testes: 87 de domínio, 47 de aplicação, 7 de arquitetura, 79 de integração.
 
 Numa máquina sem Docker e sem `LEDGER_TEST_DB`, os testes que dependem de banco
 são **ignorados com mensagem explícita** e `dotnet test` sai com código 0.
@@ -99,7 +99,7 @@ A forma provável de o bug entrar nunca foi alguém declarar `double Saldo`. É
 alguém escrever `var total = 0.0;` num cálculo auxiliar, onde nenhuma revisão de
 código repara — e é esse caso que a regra pega.
 
-### Testes de aplicação (33)
+### Testes de aplicação (47)
 
 O caso de uso de registro com portas falsas em memória. É aqui que a
 ramificação é verificada exaustivamente: registrou, replay, conflito, conta
@@ -124,7 +124,7 @@ tentativa duplicada não grava nada. O que ele não reproduz é concorrência re
 e é por isso que esse cenário vive nos testes de integração. Um falso que
 fingisse reproduzi-la daria falso-positivo no cenário de maior risco do sistema.
 
-### Testes de integração (73)
+### Testes de integração (79)
 
 Contra PostgreSQL real. Dois deles são smoke do host HTTP e não precisam de
 banco; os outros 25 precisam.
@@ -138,6 +138,7 @@ banco; os outros 25 precisam.
 | `RegisterMovementIntegrationTests` | o caso de uso contra o banco: registro, replay, conflito, 20 retries simultâneos, e a reação do adaptador a uma violação de constraint que **não** é de idempotência |
 | `GetBalanceIntegrationTests` | saldo em três instantes, corte inclusivo, precisão em 2.000 somas de fração de centavo, isolamento entre contas, **equivalência entre a soma do SQL e o cálculo do domínio**, e a verificação de que a soma acontece no banco |
 | `LedgerApiTests` | a API de ponta a ponta: `201` com `Location` que responde, `200` de replay com corpo **byte a byte** igual ao original, `409`, `400` com o código do domínio, `404`, o fluxo completo, e pedido malformado |
+| `SnapshotIntegrationTests` | **equivalência entre os dois caminhos de cálculo**, retroatividade invalidando fechamentos, atomicidade da invalidação, reconciliação contra corrupção feita por SQL, e truncar o cache não mudando saldo nenhum |
 | `SystemClockTests` | o relógio não devolve fração de microssegundo, e é sempre UTC |
 
 Três merecem destaque:
@@ -175,6 +176,20 @@ Três merecem destaque:
   o resultado. Se o EF trouxesse as linhas para somar na aplicação, o número
   seria o mesmo e o desempenho seria o do sistema que este desenho existe para
   substituir — o defeito passaria por todos os outros testes.
+- **`Os_dois_caminhos_de_calculo_devolvem_o_mesmo_numero`** é o teste que torna
+  o cache de saldo aceitável em dados financeiros. Gera 300 movimentações
+  espalhadas por 60 dias, consolida, e compara o caminho rápido com o direto em
+  30 instantes, exigindo igualdade de valor **e** de contagem. Qualquer
+  discrepância numa fronteira de dia, num arredondamento ou num intervalo meio
+  aberto aparece ali — e ele também exige que ao menos um corte tenha usado o
+  caminho rápido, para não passar comparando o cálculo direto consigo mesmo.
+- **`Tentativa_duplicada_retroativa_nao_invalida_fechamento_nenhum`** verifica a
+  atomicidade pelo lado que importa: se a gravação foi recusada, a invalidação
+  não pode ter acontecido. Sem a transação explícita, um retry degradaria o
+  cache de uma conta sem mudar nada no razão.
+- **`Truncar_o_cache_nao_muda_nenhum_saldo`** prova em execução a propriedade que
+  o ADR-0004 afirma: o snapshot é descartável. Apaga a tabela e exige o mesmo
+  número.
 - **`Repeticao_identica_devolve_200_com_o_mesmo_corpo`** compara os dois corpos
   **byte a byte**. Foi ele que encontrou o defeito do ADR-0015: o `201` era
   montado a partir do pedido e o `200` lido do banco, e os dois discordavam em
