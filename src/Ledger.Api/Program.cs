@@ -1,4 +1,5 @@
 using System.Threading.RateLimiting;
+using Ledger.Api.Documentation;
 using Ledger.Api.Endpoints;
 using Ledger.Api.Observability;
 using Ledger.Api.Resilience;
@@ -51,7 +52,7 @@ builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.N
 
 builder.Services.AddLedgerSecurity();
 
-builder.Services.AddOpenApi();
+builder.Services.AddLedgerOpenApi();
 
 // RFC 9457: todo erro da API responde ProblemDetails, inclusive os gerados pelo
 // próprio pipeline (404, 405, 415, corpo malformado). Definido no host para que
@@ -188,6 +189,20 @@ var app = builder.Build();
 // que envolver tudo o que vem depois, inclusive o tratamento de exceção.
 app.UseMiddleware<CorrelationMiddleware>();
 
+// Interface do Swagger, só em desenvolvimento. Fica antes da autenticação: são
+// arquivos estáticos públicos, e o token é pedido pela própria interface, na ação
+// Authorize. O documento OpenAPI, que é endpoint, é mapeado mais abaixo.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwaggerUI(opcoes =>
+    {
+        opcoes.SwaggerEndpoint("/openapi/v1.json", "Ledger API v1");
+        opcoes.RoutePrefix = "swagger";
+        opcoes.DocumentTitle = "Ledger API";
+        opcoes.EnablePersistAuthorization();
+    });
+}
+
 app.UseStatusCodePages();
 // Autenticação antes dos limites de capacidade: requisição sem credencial
 // válida não deve ocupar vaga que pertence a quem tem.
@@ -197,9 +212,17 @@ app.UseAuthorization();
 app.UseRateLimiter();
 app.UseRequestTimeouts();
 
+// Documentação interativa, somente em desenvolvimento. O documento OpenAPI é
+// gerado pelo framework; o Swagger UI apenas o apresenta. AllowAnonymous porque a
+// política padrão nega tudo, e uma documentação que exige o token que ela ensina a
+// obter não serve a ninguém. Em produção nada disto é exposto.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.MapOpenApi().AllowAnonymous();
+
+    app.MapGet("/", () => Results.Redirect("/swagger"))
+       .AllowAnonymous()
+       .ExcludeFromDescription();
 }
 
 // Vitalidade: "o processo está vivo", sem tocar em nenhuma dependência.

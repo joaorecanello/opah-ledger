@@ -9,7 +9,7 @@ em qualquer ponto do tempo.
 > **Estado atual: solução completa com um comando.** Os dois requisitos
 > funcionais do enunciado, expostos por HTTP, com cache de saldo consolidado e
 > reconciliado por um worker — `docker compose up --build` sobe tudo, sem .NET
-> instalado. 316 testes, 89 deles dependem de PostgreSQL real.
+> instalado. 324 testes, 89 deles dependem de PostgreSQL real.
 > [Estado atual](#estado-atual) e [LIMITATIONS.md](LIMITATIONS.md) são
 > explícitos sobre o que existe e o que não existe.
 
@@ -158,8 +158,24 @@ dotnet run --project src/Ledger.Api
 A API responde na mesma `http://localhost:5080`, de propósito: uma URL só na
 documentação, independente de como foi iniciada.
 
-A especificação OpenAPI fica em `http://localhost:5080/openapi/v1.json` (apenas
-em ambiente de desenvolvimento).
+### Swagger
+
+A interface interativa fica em **`http://localhost:5080/swagger`** (a raiz redireciona
+para ela) e o documento OpenAPI em `http://localhost:5080/openapi/v1.json`. Ambos
+existem **apenas em ambiente de desenvolvimento** — que é o do `docker compose` —, e
+um teste garante que em produção nada disso é exposto: a documentação detalhada de uma
+API financeira é reconhecimento gratuito para quem ataca.
+
+Para chamar as rotas pela interface, emita um token e cole-o em **Authorize**:
+
+```bash
+dotnet run --project tools/Ledger.DevToken -- --cross-customer
+```
+
+O documento é gerado pelo `Microsoft.AspNetCore.OpenApi`; o Swagger UI só o apresenta
+(a escolha está no [ADR-0015](docs/adr/0015-contrato-http.md)). Ele descreve o esquema
+Bearer, marca as operações que o exigem e declara o cabeçalho `Idempotency-Key`, que é
+lido do `HttpContext` e não apareceria como parâmetro.
 
 Subir o worker, que consolida o fechamento dos dias encerrados e reconcilia o
 cache contra o razão:
@@ -311,8 +327,8 @@ Detalhes e o que a medição mudou no desenho:
   de `500`; `/health/ready` degrada e `/health/live` não; circuito abre e
   recusa em 5 ms; escrita e leitura têm capacidade separada (`429`); a
   instância se recupera sozinha quando o banco volta.
-- 316 testes passando: 87 de domínio, 70 de aplicação, 7 de arquitetura,
-  152 de integração (89 dependem de PostgreSQL real).
+- 324 testes passando: 87 de domínio, 70 de aplicação, 7 de arquitetura,
+  160 de integração (89 dependem de PostgreSQL real).
 - **Concorrência verificada em escala:** 1.000 lançamentos na mesma conta, cada
   um enviado duas vezes ao mesmo tempo, pela API; soma exata, nenhuma duplicata
   (medição e ressalvas em [docs/testes.md](docs/testes.md#desempenho-medido)).
@@ -458,7 +474,7 @@ previsto.
 dotnet test
 ```
 
-316 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
+324 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
 banco em memória não reproduz unique constraint sob concorrência, logo o teste
 de idempotência — o mais importante da suíte — passaria sem provar nada.
 

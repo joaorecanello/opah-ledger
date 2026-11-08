@@ -148,3 +148,21 @@ hipótese sobre como obtê-lo.
 - **Validação que o domínio não pode fazer** — regra que depende de
   configuração por cliente, por exemplo — justificaria uma camada de validação
   na borda. Hoje não existe nenhuma.
+
+## Documentação interativa (Swagger)
+
+O documento OpenAPI continua gerado pelo `Microsoft.AspNetCore.OpenApi`, e o
+`Swashbuckle.AspNetCore.SwaggerUI` só o apresenta. Adotar o Swashbuckle inteiro
+traria um segundo gerador de documento e uma segunda fonte de verdade sobre o contrato.
+
+- **Somente em desenvolvimento**, testado: em outro ambiente, `/swagger` e
+  `/openapi/v1.json` não existem.
+- **O documento é público** nesse ambiente (`AllowAnonymous`). Sem isso a política
+  padrão da autenticação ([ADR-0016](0016-autenticacao-e-titularidade.md)) o
+  responderia com `401`, e uma documentação que exige o token que ensina a obter não
+  serve a ninguém. Isso foi uma regressão real da E13, não detectada porque nenhum teste
+  cobria o documento.
+- **O esquema Bearer e o `Idempotency-Key` são declarados por transformadores**: o
+  cabeçalho é lido do `HttpContext` e, sem isso, a interface não teria onde
+  preenchê-lo. Um teste confere que toda operação documentada declara o requisito de
+  segurança.

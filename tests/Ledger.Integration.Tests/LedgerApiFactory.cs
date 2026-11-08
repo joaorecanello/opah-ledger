@@ -72,6 +72,9 @@ public sealed class LedgerApiFactory : WebApplicationFactory<Program>
     /// </summary>
     public Action<IServiceCollection>? OverrideServices { get; init; }
 
+    /// <summary>Ambiente do host. "Development" liga a documentação interativa.</summary>
+    public string EnvironmentName { get; init; } = "Testing";
+
     /// <summary>
     /// Os clientes criados enviam, por padrão, um token com acesso irrestrito.
     /// </summary>
@@ -100,7 +103,7 @@ public sealed class LedgerApiFactory : WebApplicationFactory<Program>
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.UseEnvironment("Testing");
+        builder.UseEnvironment(EnvironmentName);
 
         builder.ConfigureAppConfiguration(configuration =>
         {

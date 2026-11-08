@@ -40,7 +40,7 @@ decisão arquitetural**, em vez de apenas exercitar código.
 
 ## O que já roda hoje
 
-316 testes: 87 de domínio, 70 de aplicação, 7 de arquitetura, 152 de integração
+324 testes: 87 de domínio, 70 de aplicação, 7 de arquitetura, 160 de integração
 (89 dependem de PostgreSQL real). Inclui autenticação (token ausente, adulterado,
 expirado, `alg: none`, confusão de algoritmo), escopos e titularidade da conta,
 verificados no caso de uso e pela API. Inclui métricas, correlação e a prova de que
