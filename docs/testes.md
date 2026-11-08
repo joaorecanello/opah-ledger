@@ -25,9 +25,9 @@ requisito de RO-04, não conveniência.
 | 1 | Mesma `Idempotency-Key` enviada duas vezes resulta em uma movimentação, com resposta idêntica | integração | **duplicar dinheiro é a pior falha deste domínio**: é invisível até a conciliação | **implementado**; falta só o status HTTP |
 | 2 | Mesma chave com conteúdo diferente resulta em `409` e nada persistido | integração | impede adivinhar intenção do chamador | **implementado**; falta só o status HTTP |
 | 3 | 1.000 movimentações concorrentes na mesma conta resultam em saldo igual à soma exata | concorrência | prova empírica de [ADR-0002](adr/0002-ledger-append-only.md); é o bug provável do legado | **20 simultâneas verificadas**; falta a escala |
-| 4 | Saldo `asOf` anterior à primeira movimentação devolve zero, não erro | integração | fronteira clássica | **no domínio**; falta no fim a fim |
-| 5 | Saldo `asOf` exatamente no instante de uma movimentação é inclusivo e documentado | integração | ambiguidade que vira discrepância de centavos | pendente (E07) |
-| 6 | Snapshot é equivalente ao cálculo direto para 10.000 movimentações em datas aleatórias | propriedade | **a otimização não pode mudar o número** | **em miniatura**; falta com banco (E10) |
+| 4 | Saldo `asOf` anterior à primeira movimentação devolve zero, não erro | integração | fronteira clássica | **implementado** |
+| 5 | Saldo `asOf` exatamente no instante de uma movimentação é inclusivo e documentado | integração | ambiguidade que vira discrepância de centavos | **implementado** |
+| 6 | Snapshot é equivalente ao cálculo direto para 10.000 movimentações em datas aleatórias | propriedade | **a otimização não pode mudar o número** | **oráculo pronto** (domínio ≡ SQL); falta o snapshot |
 | 7 | Movimentação retroativa invalida snapshots e o saldo segue correto | integração | o caso difícil de [PR-04](premissas.md#pr-04) | pendente (E10) |
 | 8 | Falha de commit (banco derrubado no meio) não persiste nada e o retry é limpo | integração | atomicidade real, não presumida | **atomicidade no conflito verificada**; falta derrubar o banco |
 | 9 | Soma de um milhão de valores em `decimal` não acumula erro de arredondamento | unitário | precisão monetária | **implementado** |
@@ -40,10 +40,10 @@ decisão arquitetural**, em vez de apenas exercitar código.
 
 ## O que já roda hoje
 
-159 testes: 87 de domínio, 20 de aplicação, 7 de arquitetura, 45 de integração.
+180 testes: 87 de domínio, 33 de aplicação, 7 de arquitetura, 53 de integração.
 
-Numa máquina sem Docker e sem `LEDGER_TEST_DB`, os 33 testes que dependem de
-banco são **ignorados com mensagem explícita** e `dotnet test` sai com código 0.
+Numa máquina sem Docker e sem `LEDGER_TEST_DB`, os testes que dependem de banco
+são **ignorados com mensagem explícita** e `dotnet test` sai com código 0.
 Verificado nos dois caminhos.
 
 ### Testes de domínio (87)
@@ -99,7 +99,7 @@ A forma provável de o bug entrar nunca foi alguém declarar `double Saldo`. É
 alguém escrever `var total = 0.0;` num cálculo auxiliar, onde nenhuma revisão de
 código repara — e é esse caso que a regra pega.
 
-### Testes de aplicação (20)
+### Testes de aplicação (33)
 
 O caso de uso de registro com portas falsas em memória. É aqui que a
 ramificação é verificada exaustivamente: registrou, replay, conflito, conta
@@ -124,7 +124,7 @@ tentativa duplicada não grava nada. O que ele não reproduz é concorrência re
 e é por isso que esse cenário vive nos testes de integração. Um falso que
 fingisse reproduzi-la daria falso-positivo no cenário de maior risco do sistema.
 
-### Testes de integração (45)
+### Testes de integração (53)
 
 Contra PostgreSQL real. Dois deles são smoke do host HTTP e não precisam de
 banco; os outros 25 precisam.
@@ -136,6 +136,7 @@ banco; os outros 25 precisam.
 | `IdempotencyConstraintTests` | mesma chave duas vezes grava uma movimentação só; a transação da tentativa recusada é inteira desfeita; 20 tentativas simultâneas registram uma só; chaves diferentes com mesmo valor são duas movimentações |
 | `PersistenceRoundTripTests` | precisão decimal na ida e volta, soma de mil centavos pelo próprio banco, instante com fuso de origem, ida e volta completa do domínio, e o esquema recusando valor não positivo e conta inexistente |
 | `RegisterMovementIntegrationTests` | o caso de uso contra o banco: registro, replay, conflito, 20 retries simultâneos, e a reação do adaptador a uma violação de constraint que **não** é de idempotência |
+| `GetBalanceIntegrationTests` | saldo em três instantes, corte inclusivo, precisão em 2.000 somas de fração de centavo, isolamento entre contas, **equivalência entre a soma do SQL e o cálculo do domínio**, e a verificação de que a soma acontece no banco |
 | `SystemClockTests` | o relógio não devolve fração de microssegundo, e é sempre UTC |
 
 Três merecem destaque:
@@ -162,6 +163,17 @@ Três merecem destaque:
   outra violação como "chave repetida" faria o sistema responder `200` a um
   pedido que não foi registrado — a pior resposta possível, porque o chamador
   acreditaria que o lançamento existe.
+- **`Soma_do_banco_equivale_ao_calculo_do_dominio`** é o que torna aceitável a
+  duplicação da convenção de sinal. A soma acontece em SQL, com um `CASE WHEN`
+  que repete o que `Movement.SignedAmount` define em C#; somar em memória seria
+  inviável no volume real. O teste gera 120 movimentações em datas aleatórias,
+  soma pelos dois caminhos e exige o mesmo número — e falharia se alguém
+  adicionasse um terceiro tipo de movimentação, que o `CASE WHEN` trataria
+  silenciosamente como débito.
+- **`A_soma_acontece_no_banco_e_nao_em_memoria`** inspeciona o SQL emitido, não
+  o resultado. Se o EF trouxesse as linhas para somar na aplicação, o número
+  seria o mesmo e o desempenho seria o do sistema que este desenho existe para
+  substituir — o defeito passaria por todos os outros testes.
 
 Que as **migrations aplicam** não tem teste próprio: o fixture as aplica contra o
 banco em toda execução da suíte. Verificação de graça e sempre, em lugar de um

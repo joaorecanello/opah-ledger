@@ -101,6 +101,40 @@ public sealed class LedgerRepository(LedgerDbContext context) : ILedgerRepositor
                 registro.CreatedAt);
     }
 
+    /// <inheritdoc/>
+    public async Task<LedgerSum> SumUpToAsync(
+        AccountId accountId,
+        DateTimeOffset asOf,
+        CancellationToken cancellationToken)
+    {
+        // A soma e a contagem saem numa ida só ao banco. O GroupBy sobre uma
+        // constante é o jeito de pedir uma agregação sem GROUP BY de verdade:
+        // o EF emite SUM(CASE WHEN type = 'Credit' THEN amount ELSE -amount END)
+        // e COUNT(*) na mesma consulta.
+        //
+        // O CASE WHEN repete a convenção de sinal que Movement.SignedAmount
+        // define. É duplicação consciente — somar em memória seria inviável no
+        // volume real —, e o que impede as duas de divergirem é o teste de
+        // equivalência entre o cálculo do domínio e o do banco.
+        var agregado = await context.Movements
+            .AsNoTracking()
+            .Where(m => m.AccountId == accountId.Value && m.OccurredAt <= asOf)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Soma = g.Sum(m => m.Type == MovementType.Credit ? m.Amount : -m.Amount),
+                Contagem = g.LongCount(),
+            })
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        // Conjunto vazio: conta sem movimentação até o corte. Saldo zero é a
+        // resposta correta, não ausência de resposta.
+        return agregado is null
+            ? new LedgerSum(0m, 0L)
+            : new LedgerSum(agregado.Soma, agregado.Contagem);
+    }
+
     private static bool EhChaveDeIdempotenciaRepetida(DbUpdateException erro) =>
         erro.InnerException is PostgresException postgres
         && postgres.SqlState == PostgresErrorCodes.UniqueViolation

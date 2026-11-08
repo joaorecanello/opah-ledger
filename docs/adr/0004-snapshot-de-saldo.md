@@ -38,6 +38,15 @@ obviamente correta e porque me dá a referência de verdade: o teste da otimiza�
 
 Otimizar sem ter o resultado correto medido antes é como refatorar sem teste.
 
+> **Estado da implementação.** A alternativa 1 está pronta e em uso: a consulta
+> faz uma única agregação no banco, filtrada pelo índice de conta e instante, e
+> devolve `source: "DirectSum"`.
+>
+> Ela já vem com o oráculo montado — um teste gera 120 movimentações em datas
+> aleatórias, soma pelo banco e pelo `BalanceCalculator` do domínio, e exige o
+> mesmo número. Quando o snapshot entrar, é esse mesmo teste, com o terceiro
+> caminho somado à comparação.
+
 **Alternativa 2 reintroduz o pecado de ADR-0002 pela porta dos fundos.** Um saldo
 materializado mutável pode divergir da verdade sem ninguém notar. A diferença em
 relação à coluna de saldo rejeitada em ADR-0002 é apenas quem escreve nela — e o

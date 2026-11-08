@@ -105,8 +105,14 @@ public sealed class PostgresFixture : IAsyncLifetime
     /// <summary>
     /// Cria um contexto apontado para o banco de teste.
     /// </summary>
+    /// <param name="logSql">
+    /// Recebe cada comando SQL emitido. Serve a testes que verificam <b>como</b>
+    /// uma consulta é traduzida, e não apenas o resultado dela — por exemplo,
+    /// que a soma de saldo é uma agregação no banco e não uma varredura trazida
+    /// para a memória.
+    /// </param>
     /// <exception cref="InvalidOperationException">O banco não está disponível.</exception>
-    public LedgerDbContext CreateContext()
+    public LedgerDbContext CreateContext(Action<string>? logSql = null)
     {
         if (ConnectionString is null)
         {
@@ -114,11 +120,17 @@ public sealed class PostgresFixture : IAsyncLifetime
                 UnavailableReason ?? "Banco de teste não disponível.");
         }
 
-        var options = new DbContextOptionsBuilder<LedgerDbContext>()
-            .UseNpgsql(ConnectionString, npgsql => npgsql.MigrationsHistoryTable("__migrations"))
-            .Options;
+        var builder = new DbContextOptionsBuilder<LedgerDbContext>()
+            .UseNpgsql(ConnectionString, npgsql => npgsql.MigrationsHistoryTable("__migrations"));
 
-        return new LedgerDbContext(options);
+        if (logSql is not null)
+        {
+            builder.LogTo(
+                logSql,
+                [Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandExecuted]);
+        }
+
+        return new LedgerDbContext(builder.Options);
     }
 
     /// <summary>

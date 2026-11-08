@@ -1,4 +1,5 @@
 using Ledger.Application.Abstractions;
+using Ledger.Application.Balances;
 using Ledger.Application.Movements;
 using Ledger.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -42,7 +43,9 @@ public static class LedgerServiceCollectionExtensions
         services.AddScoped<ILedgerRepository, LedgerRepository>();
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton(new RegisterMovementOptions());
+        services.AddSingleton(new GetBalanceOptions());
         services.AddScoped<RegisterMovementHandler>();
+        services.AddScoped<GetBalanceHandler>();
 
         return services;
     }

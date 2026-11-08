@@ -208,6 +208,37 @@ de movimentações.
 primeira pergunta é de onde o número veio. Rastreabilidade do número vale mais
 que elegância do payload.
 
+> **O que está implementado hoje é o caminho sem snapshot:** uma única agregação
+> no banco, `SUM(CASE WHEN type = 'Credit' THEN amount ELSE -amount END)`,
+> filtrada por conta e instante pelo índice
+> `ix_movements_account_id_occurred_at`. A resposta devolve
+> `source: "DirectSum"`.
+>
+> É correto em qualquer volume e é o **oráculo** contra o qual o snapshot será
+> verificado — ordem deliberada, explicada em
+> [ADR-0004](adr/0004-snapshot-de-saldo.md): otimizar sem ter o resultado certo
+> medido antes é refatorar sem teste.
+>
+> O `CASE WHEN` repete a convenção de sinal que `Movement.SignedAmount` define em
+> C#. A duplicação é consciente — somar em memória seria inviável — e há teste de
+> integração que gera 120 movimentações, soma pelos dois caminhos e exige o mesmo
+> número.
+
+### O corte usa o tempo de negócio
+
+`asOf` filtra por `occurredAt`, não por `postedAt`: "qual era meu saldo na sexta"
+pergunta sobre **fatos**, não sobre o que o sistema já havia registrado. É por
+isso que uma movimentação retroativa registrada hoje aparece no saldo de dez dias
+atrás — e também por que ela invalida snapshots, como o fluxo 4 mostra.
+
+O limite é **inclusivo**: uma movimentação cujo `occurredAt` é exatamente o
+instante consultado entra no saldo. Ambiguidade dessas é o que vira discrepância
+de centavos entre dois sistemas que leem o mesmo razão.
+
+**Saldo em instante futuro é recusado.** Não é conhecível: movimentações ainda
+vão chegar para aquele período. Devolver um número apresentaria uma resposta
+incompleta como se fosse final, e quem consome não teria como saber.
+
 ---
 
 ## 4. Consultar saldo numa janela invalidada por movimentação retroativa

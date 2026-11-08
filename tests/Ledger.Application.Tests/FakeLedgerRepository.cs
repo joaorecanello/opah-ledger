@@ -75,6 +75,26 @@ internal sealed class FakeLedgerRepository : ILedgerRepository
         return Task.FromResult(LedgerWriteOutcome.Persisted);
     }
 
+    public Task<LedgerSum> SumUpToAsync(
+        AccountId accountId,
+        DateTimeOffset asOf,
+        CancellationToken cancellationToken)
+    {
+        // Usa SignedAmount do domínio de propósito: o que estes testes verificam
+        // é a decisão do caso de uso, não a aritmética. A equivalência entre a
+        // soma do domínio e a do SQL é verificada nos testes de integração, que
+        // é onde o SQL existe.
+        var consideradas = _movimentacoes.Values
+            .Where(m => m.AccountId == accountId && m.OccurredAt <= asOf)
+            .ToArray();
+
+        var soma = consideradas.Aggregate(
+            0m,
+            (acumulado, movimentacao) => acumulado + movimentacao.SignedAmount.Amount);
+
+        return Task.FromResult(new LedgerSum(soma, consideradas.Length));
+    }
+
     public Task<IdempotentRegistration?> FindRegistrationAsync(
         IdempotencyKey key,
         CancellationToken cancellationToken)

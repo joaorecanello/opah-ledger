@@ -40,6 +40,28 @@ public sealed record IdempotentRegistration(
     DateTimeOffset RegisteredAt);
 
 /// <summary>
+/// Soma das movimentações de uma conta até um instante.
+/// </summary>
+/// <param name="SignedAmount">
+/// Soma com o sinal aplicado: créditos positivos, débitos negativos. Sem moeda,
+/// porque a moeda é da conta e o caso de uso já a conhece — devolvê-la aqui
+/// permitiria que o adaptador discordasse da conta.
+/// </param>
+/// <param name="MovementCount">Quantas movimentações entraram na soma.</param>
+/// <remarks>
+/// A soma é feita <b>no banco</b>, não em memória. Carregar o histórico para
+/// somar na aplicação seria inviável no volume assumido em PR-02, e é
+/// exatamente a varredura que o índice por conta e data existe para evitar.
+/// <para>
+/// O preço é que a convenção de sinal passa a existir em dois lugares: em
+/// <c>Movement.SignedAmount</c> e no SQL. O que impede os dois de divergirem é um
+/// teste de equivalência: ele gera movimentações, soma pelo domínio e pelo
+/// banco, e exige o mesmo número.
+/// </para>
+/// </remarks>
+public sealed record LedgerSum(decimal SignedAmount, long MovementCount);
+
+/// <summary>
 /// Acesso ao razão. Porta declarada aqui, implementada na infraestrutura.
 /// </summary>
 /// <remarks>
@@ -81,5 +103,29 @@ public interface ILedgerRepository
     /// </summary>
     Task<IdempotentRegistration?> FindRegistrationAsync(
         IdempotencyKey key,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Soma as movimentações da conta ocorridas <b>até</b> o instante informado.
+    /// </summary>
+    /// <param name="accountId">Conta.</param>
+    /// <param name="asOf">
+    /// Instante de corte, <b>inclusivo</b>: uma movimentação cujo
+    /// <c>OccurredAt</c> é exatamente este instante entra na soma.
+    /// </param>
+    /// <param name="cancellationToken">Token de cancelamento.</param>
+    /// <returns>
+    /// A soma e a contagem. Conta sem movimentação devolve zero e zero — não
+    /// erro, porque saldo zero é a resposta correta para uma conta sem
+    /// lançamentos.
+    /// </returns>
+    /// <remarks>
+    /// O corte usa <c>OccurredAt</c>, o tempo de negócio: "qual era meu saldo na
+    /// sexta" pergunta sobre fatos, não sobre o que o sistema já havia
+    /// registrado. Ver PR-04.
+    /// </remarks>
+    Task<LedgerSum> SumUpToAsync(
+        AccountId accountId,
+        DateTimeOffset asOf,
         CancellationToken cancellationToken);
 }

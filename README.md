@@ -6,11 +6,11 @@ Razão contábil para movimentações financeiras de clientes de um banco digita
 registra créditos e débitos em contas e responde a posição consolidada de saldo
 em qualquer ponto do tempo.
 
-> **Estado atual: registro de movimentação funcionando, sem API.** 159 testes,
-> sendo 33 contra PostgreSQL real. O caso de uso de registro idempotente está
-> completo e verificado sob concorrência; falta expô-lo por HTTP e implementar a
-> consulta de saldo. A seção [Estado atual](#estado-atual) é explícita sobre o
-> que existe e o que não existe.
+> **Estado atual: os dois fluxos de negócio funcionando, sem API.** 180 testes,
+> sendo 41 contra PostgreSQL real. Registro idempotente e consulta de posição
+> consolidada estão completos e verificados; falta expô-los por HTTP. A seção
+> [Estado atual](#estado-atual) é explícita sobre o que existe e o que não
+> existe.
 
 ## O problema
 
@@ -86,9 +86,9 @@ decorrem dessas duas.
 
 - [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0) — qualquer
   versão 10.x serve (o `global.json` usa `rollForward: latestFeature`).
-- **Docker — opcional.** Sem ele, `dotnet test` roda os 126 testes que não
-  dependem de banco e **ignora** os 33 que dependem, com mensagem explícita e
-  código de saída 0. Com ele, os 159 rodam. Verificado nos dois caminhos.
+- **Docker — opcional.** Sem ele, `dotnet test` roda os testes que não dependem
+  de banco e **ignora** os que dependem, com mensagem explícita e código de
+  saída 0. Com ele, os 180 rodam. Verificado nos dois caminhos.
 
 Nenhum certificado TLS de desenvolvimento é necessário: localmente a API sobe em
 HTTP puro de propósito. Em produção, o TLS é terminado antes da aplicação.
@@ -164,14 +164,17 @@ dotnet run --project src/Ledger.Worker
 - **Registro de movimentação idempotente:** o caso de uso decide entre
   registrar, devolver a resposta original e recusar por conflito, verificado
   contra PostgreSQL real com 20 retries simultâneos.
-- 159 testes passando: 87 de domínio, 20 de aplicação, 7 de arquitetura,
-  45 de integração (33 contra PostgreSQL real).
+- **Consulta de posição consolidada:** saldo em qualquer instante, somado no
+  banco, com a equivalência contra o cálculo do domínio verificada por teste.
+- 180 testes passando: 87 de domínio, 33 de aplicação, 7 de arquitetura,
+  53 de integração (41 contra PostgreSQL real).
 - Requisitos decompostos, 14 premissas registradas e 14 ADRs escritas.
 
 **Não existe ainda:**
 
-- Endpoints HTTP que exponham o registro (`201`, `200` no replay, `409`). O
-  desfecho já é decidido pelo caso de uso; falta traduzi-lo para status.
+- Endpoints HTTP que exponham os dois fluxos. Os desfechos já são decididos
+  pelos casos de uso; falta traduzi-los para status (`201`, `200` no replay,
+  `409`, `404`).
 - Consulta de saldo consolidado.
 - Endpoints de negócio.
 - `docker compose up` de um comando.
@@ -230,8 +233,9 @@ antes do merge.
 src/
   Ledger.Domain          entidades e invariantes. Dependência ZERO, por regra testada
   Ledger.Application     casos de uso e portas (interfaces)
-    Abstractions/          IClock, ILedgerRepository
+    Abstractions/          IClock, ILedgerRepository, política temporal
     Movements/             RegisterMovement, RequestFingerprint
+    Balances/              GetBalance
   Ledger.Infrastructure  adaptadores
     Persistence/           DbContext, records, migrations, mapeamento explícito
   Ledger.Api             host HTTP
@@ -290,7 +294,7 @@ previsto.
 dotnet test
 ```
 
-159 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
+180 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
 banco em memória não reproduz unique constraint sob concorrência, logo o teste
 de idempotência — o mais importante da suíte — passaria sem provar nada.
 
