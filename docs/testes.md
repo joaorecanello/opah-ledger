@@ -22,8 +22,8 @@ requisito de RO-04, não conveniência.
 
 | # | Cenário | Tipo | Por que é crítico | Status |
 |---|---------|------|-------------------|--------|
-| 1 | Mesma `Idempotency-Key` enviada duas vezes resulta em uma movimentação, com resposta idêntica | integração | **duplicar dinheiro é a pior falha deste domínio**: é invisível até a conciliação | **mecanismo verificado**; falta a resposta HTTP |
-| 2 | Mesma chave com conteúdo diferente resulta em `409` e nada persistido | integração | impede adivinhar intenção do chamador | **distinção verificada**; falta o `409` da API |
+| 1 | Mesma `Idempotency-Key` enviada duas vezes resulta em uma movimentação, com resposta idêntica | integração | **duplicar dinheiro é a pior falha deste domínio**: é invisível até a conciliação | **implementado**; falta só o status HTTP |
+| 2 | Mesma chave com conteúdo diferente resulta em `409` e nada persistido | integração | impede adivinhar intenção do chamador | **implementado**; falta só o status HTTP |
 | 3 | 1.000 movimentações concorrentes na mesma conta resultam em saldo igual à soma exata | concorrência | prova empírica de [ADR-0002](adr/0002-ledger-append-only.md); é o bug provável do legado | **20 simultâneas verificadas**; falta a escala |
 | 4 | Saldo `asOf` anterior à primeira movimentação devolve zero, não erro | integração | fronteira clássica | **no domínio**; falta no fim a fim |
 | 5 | Saldo `asOf` exatamente no instante de uma movimentação é inclusivo e documentado | integração | ambiguidade que vira discrepância de centavos | pendente (E07) |
@@ -40,9 +40,9 @@ decisão arquitetural**, em vez de apenas exercitar código.
 
 ## O que já roda hoje
 
-121 testes: 87 de domínio, 7 de arquitetura, 27 de integração.
+159 testes: 87 de domínio, 20 de aplicação, 7 de arquitetura, 45 de integração.
 
-Numa máquina sem Docker e sem `LEDGER_TEST_DB`, os 25 testes que dependem de
+Numa máquina sem Docker e sem `LEDGER_TEST_DB`, os 33 testes que dependem de
 banco são **ignorados com mensagem explícita** e `dotnet test` sai com código 0.
 Verificado nos dois caminhos.
 
@@ -99,7 +99,32 @@ A forma provável de o bug entrar nunca foi alguém declarar `double Saldo`. É
 alguém escrever `var total = 0.0;` num cálculo auxiliar, onde nenhuma revisão de
 código repara — e é esse caso que a regra pega.
 
-### Testes de integração (27)
+### Testes de aplicação (20)
+
+O caso de uso de registro com portas falsas em memória. É aqui que a
+ramificação é verificada exaustivamente: registrou, replay, conflito, conta
+inexistente, recusa por regra de domínio, e os limites temporais.
+
+Três merecem destaque:
+
+- **`Repeticao_identica_devolve_a_resposta_original`** avança o relógio entre as
+  duas tentativas e exige que o identificador e o instante devolvidos sejam os
+  da primeira. Replay, não reprocessamento.
+- **`Repeticao_com_correlacao_diferente_ainda_e_replay`** fixa o que a impressão
+  do conteúdo cobre. Incluir a correlação faria todo retry parecer conteúdo
+  divergente, e o sistema recusaria com `409` exatamente o retry que deveria
+  aceitar.
+- **`Chave_usada_cujo_registro_desapareceu_e_conflito_e_nao_novo_registro`**
+  cobre o caminho improvável em que a limpeza das chaves expiradas passa entre o
+  `INSERT` que falhou e a leitura. Registrar de novo duplicaria dinheiro;
+  recusar é a única opção segura.
+
+O falso em memória reproduz **uma** propriedade do banco: a chave é única e a
+tentativa duplicada não grava nada. O que ele não reproduz é concorrência real —
+e é por isso que esse cenário vive nos testes de integração. Um falso que
+fingisse reproduzi-la daria falso-positivo no cenário de maior risco do sistema.
+
+### Testes de integração (45)
 
 Contra PostgreSQL real. Dois deles são smoke do host HTTP e não precisam de
 banco; os outros 25 precisam.
@@ -110,6 +135,8 @@ banco; os outros 25 precisam.
 | `SchemaTests` | o esquema **como o PostgreSQL o criou**: tabelas, `numeric(19,4)`, `timestamptz`, o índice que serve à consulta de saldo, onde a unicidade vive, e a ausência de coluna de saldo |
 | `IdempotencyConstraintTests` | mesma chave duas vezes grava uma movimentação só; a transação da tentativa recusada é inteira desfeita; 20 tentativas simultâneas registram uma só; chaves diferentes com mesmo valor são duas movimentações |
 | `PersistenceRoundTripTests` | precisão decimal na ida e volta, soma de mil centavos pelo próprio banco, instante com fuso de origem, ida e volta completa do domínio, e o esquema recusando valor não positivo e conta inexistente |
+| `RegisterMovementIntegrationTests` | o caso de uso contra o banco: registro, replay, conflito, 20 retries simultâneos, e a reação do adaptador a uma violação de constraint que **não** é de idempotência |
+| `SystemClockTests` | o relógio não devolve fração de microssegundo, e é sempre UTC |
 
 Três merecem destaque:
 
@@ -125,6 +152,16 @@ Três merecem destaque:
 - **`Nao_existe_coluna_de_saldo_em_lugar_nenhum`** consulta o catálogo do
   PostgreSQL. A ausência de saldo mutável é a decisão central da solução, e
   precisa valer no esquema e não só no domínio.
+- **`Vinte_retries_simultaneos_identicos_registram_um_e_replicam_o_resto`** é o
+  cenário real de uma resposta perdida: várias tentativas chegam juntas. O
+  desfecho correto **não** é `409` — todas se referem ao mesmo fato, logo uma
+  registra e as outras recebem a resposta original, com o mesmo identificador.
+  Recusar as perdedoras seria punir o chamador por uma falha de rede.
+- **`Colisao_que_nao_e_de_idempotencia_nao_e_tratada_como_replay`** verifica que
+  o adaptador olha o **nome** do constraint, não só o código `23505`. Tratar
+  outra violação como "chave repetida" faria o sistema responder `200` a um
+  pedido que não foi registrado — a pior resposta possível, porque o chamador
+  acreditaria que o lançamento existe.
 
 Que as **migrations aplicam** não tem teste próprio: o fixture as aplica contra o
 banco em toda execução da suíte. Verificação de graça e sempre, em lugar de um

@@ -1,3 +1,4 @@
+using Ledger.Application.Movements;
 using Ledger.Domain;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -182,12 +183,12 @@ public sealed class IdempotencyConstraintTests(PostgresFixture fixture)
 
         // Mesmo conteúdo, tentativa nova: impressão igual, logo é replay.
         var repeticao = LedgerTestData.NovaMovimentacao(conta, 100m, chave, ocorridaEm: instante);
-        Ledger.Infrastructure.Persistence.RequestFingerprint.Of(repeticao)
+        RequestFingerprint.Of(repeticao)
             .ShouldBe(gravado.RequestFingerprint);
 
         // Valor diferente: impressão diferente, logo é erro do chamador.
         var divergente = LedgerTestData.NovaMovimentacao(conta, 150m, chave, ocorridaEm: instante);
-        Ledger.Infrastructure.Persistence.RequestFingerprint.Of(divergente)
+        RequestFingerprint.Of(divergente)
             .ShouldNotBe(gravado.RequestFingerprint);
     }
 }

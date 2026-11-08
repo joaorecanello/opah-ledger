@@ -6,12 +6,11 @@ Razão contábil para movimentações financeiras de clientes de um banco digita
 registra créditos e débitos em contas e responde a posição consolidada de saldo
 em qualquer ponto do tempo.
 
-> **Estado atual: domínio e persistência implementados, sem endpoints de
-> negócio.** 121 testes, sendo 25 contra PostgreSQL real. O esquema existe com
-> migrations aplicáveis, e a garantia de idempotência está verificada no banco.
-> Falta o caso de uso de registro e a API. A seção
-> [Estado atual](#estado-atual) é explícita sobre o que existe e o que não
-> existe.
+> **Estado atual: registro de movimentação funcionando, sem API.** 159 testes,
+> sendo 33 contra PostgreSQL real. O caso de uso de registro idempotente está
+> completo e verificado sob concorrência; falta expô-lo por HTTP e implementar a
+> consulta de saldo. A seção [Estado atual](#estado-atual) é explícita sobre o
+> que existe e o que não existe.
 
 ## O problema
 
@@ -87,9 +86,9 @@ decorrem dessas duas.
 
 - [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0) — qualquer
   versão 10.x serve (o `global.json` usa `rollForward: latestFeature`).
-- **Docker — opcional.** Sem ele, `dotnet test` roda os 96 testes que não
-  dependem de banco e **ignora** os 25 de integração com mensagem explícita,
-  saindo com código 0. Com ele, os 121 rodam. Verificado nos dois caminhos.
+- **Docker — opcional.** Sem ele, `dotnet test` roda os 126 testes que não
+  dependem de banco e **ignora** os 33 que dependem, com mensagem explícita e
+  código de saída 0. Com ele, os 159 rodam. Verificado nos dois caminhos.
 
 Nenhum certificado TLS de desenvolvimento é necessário: localmente a API sobe em
 HTTP puro de propósito. Em produção, o TLS é terminado antes da aplicação.
@@ -162,14 +161,17 @@ dotnet run --project src/Ledger.Worker
   `IdempotencyKey`, `BalanceSnapshot` e o cálculo de saldo.
 - **Persistência em PostgreSQL:** esquema, migrations aplicáveis, índices,
   `CHECK (amount > 0)` e a unicidade da idempotência verificada no banco.
-- 121 testes passando: 87 de domínio, 7 de arquitetura, 27 de integração
-  (25 contra PostgreSQL real).
-- Requisitos decompostos, 13 premissas registradas e 14 ADRs escritas.
+- **Registro de movimentação idempotente:** o caso de uso decide entre
+  registrar, devolver a resposta original e recusar por conflito, verificado
+  contra PostgreSQL real com 20 retries simultâneos.
+- 159 testes passando: 87 de domínio, 20 de aplicação, 7 de arquitetura,
+  45 de integração (33 contra PostgreSQL real).
+- Requisitos decompostos, 14 premissas registradas e 14 ADRs escritas.
 
 **Não existe ainda:**
 
-- Caso de uso de registro de movimentação com idempotência — o mecanismo está
-  verificado no banco, falta a semântica HTTP (`201`, `200` no replay, `409`).
+- Endpoints HTTP que exponham o registro (`201`, `200` no replay, `409`). O
+  desfecho já é decidido pelo caso de uso; falta traduzi-lo para status.
 - Consulta de saldo consolidado.
 - Endpoints de negócio.
 - `docker compose up` de um comando.
@@ -228,12 +230,15 @@ antes do merge.
 src/
   Ledger.Domain          entidades e invariantes. Dependência ZERO, por regra testada
   Ledger.Application     casos de uso e portas (interfaces)
+    Abstractions/          IClock, ILedgerRepository
+    Movements/             RegisterMovement, RequestFingerprint
   Ledger.Infrastructure  adaptadores
     Persistence/           DbContext, records, migrations, mapeamento explícito
   Ledger.Api             host HTTP
   Ledger.Worker          host de background: consolidação, reconciliação, outbox
 tests/
   Ledger.Domain.Tests        invariantes do domínio. Sem banco, sem HTTP, sem Docker
+  Ledger.Application.Tests   casos de uso com portas falsas em memória
   Ledger.Architecture.Tests  fronteiras de camada e proibição de ponto flutuante
   Ledger.Integration.Tests   API em memória e PostgreSQL real via Testcontainers
 docs/
@@ -285,7 +290,7 @@ previsto.
 dotnet test
 ```
 
-121 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
+159 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
 banco em memória não reproduz unique constraint sob concorrência, logo o teste
 de idempotência — o mais importante da suíte — passaria sem provar nada.
 

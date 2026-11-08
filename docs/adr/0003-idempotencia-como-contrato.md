@@ -116,6 +116,16 @@ que a idempotência existia para evitar.
 - Há métrica `ledger_idempotent_replays_total`. Alta de replays não é erro do
   ledger — é sinal de que algum cliente está com timeout mal calibrado, e é uma
   informação operacional útil que sai de graça.
+- **O relógio do sistema é truncado ao microssegundo.** A resposta do replay vem
+  do banco; a do registro original vem do relógio em memória. O
+  `DateTimeOffset.UtcNow` tem resolução de 100 ns e o `timestamptz` guarda
+  microssegundos, então sem truncar os dois carimbos diferem em até 999 ns — e o
+  replay deixa de ser *idêntico* ao original, que é precisamente a garantia deste
+  ADR. Foi um teste de integração que encontrou isso.
+- **Retries simultâneos do mesmo fato resultam em replay, não em conflito.** Uma
+  tentativa registra e as demais recebem a resposta original. Recusar as
+  perdedoras com `409` seria punir o chamador por uma falha de rede — e é o erro
+  que uma leitura apressada deste ADR produziria.
 
 ## Testes que verificam esta decisão
 

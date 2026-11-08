@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testes dos casos de uso com portas falsas em memoria. Sem banco, sem HTTP,
+    sem Docker: a camada de aplicacao so conhece interfaces, logo testa-la nao
+    precisa de infraestrutura.
+
+    E aqui que a ramificacao do registro idempotente — registrou, replay,
+    conflito — e verificada exaustivamente. Os testes de integracao verificam o
+    mecanismo no banco; estes verificam a decisao.
+  -->
+
+  <PropertyGroup>
+    <RootNamespace>Ledger.Application.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Ledger.Application/Ledger.Application.csproj" />
+  </ItemGroup>
+
+</Project>

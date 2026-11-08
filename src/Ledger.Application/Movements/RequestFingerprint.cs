@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Ledger.Domain;
 
-namespace Ledger.Infrastructure.Persistence;
+namespace Ledger.Application.Movements;
 
 /// <summary>
 /// Impressão do conteúdo de uma requisição de registro de movimentação.
@@ -26,6 +26,12 @@ namespace Ledger.Infrastructure.Persistence;
 /// instante de registro nem a correlação, que mudam a cada tentativa por
 /// natureza — incluí-los faria toda repetição parecer conteúdo divergente, e o
 /// mecanismo recusaria com <c>409</c> exatamente o retry que deveria aceitar.
+/// </para>
+/// <para>
+/// Vive na camada de aplicação, e não na de persistência, porque essa escolha de
+/// campos <b>é</b> a definição de "a mesma requisição". Mudá-la muda quando o
+/// sistema responde <c>200</c> e quando responde <c>409</c> — é regra de
+/// negócio, não detalhe de armazenamento. A tabela só guarda o resultado.
 /// </para>
 /// </remarks>
 public static class RequestFingerprint

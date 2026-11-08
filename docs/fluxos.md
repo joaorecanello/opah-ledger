@@ -104,6 +104,47 @@ resposta devolve **o identificador original** — se devolvesse um novo para o
 mesmo fato, criaria exatamente a divergência que a idempotência existe para
 evitar, já que o chamador pode estar usando esse identificador para conciliar.
 
+Para que a resposta do replay seja de fato *idêntica* à original, o relógio do
+sistema é truncado ao microssegundo: o `DateTimeOffset.UtcNow` tem resolução de
+100 ns e o `timestamptz` guarda microssegundos, então sem truncar os dois
+carimbos difeririam em até 999 ns. Foi um teste de integração que encontrou isso.
+
+### E quando as tentativas chegam ao mesmo tempo?
+
+É o caso mais comum de verdade: o cliente perde a resposta, repete, e as
+tentativas se atropelam. O desfecho correto **não** é `409`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant O1 as Tentativa 1
+    participant O2 as Tentativa 2
+    participant D as PostgreSQL
+
+    par as duas comecam juntas
+        O1->>D: INSERT movimentacao + chave k-9f3a
+    and
+        O2->>D: INSERT movimentacao + chave k-9f3a
+    end
+
+    D-->>O1: commit ok
+    Note over O2,D: o INSERT de O2 esperou o commit de O1<br/>e so entao violou o constraint
+    D-->>O2: violacao de unique constraint
+    O2->>D: SELECT conteudo original pela chave
+    D-->>O2: mesmo conteudo
+    O1-->>O1: 201 Created
+    O2-->>O2: 200 OK, resposta original
+```
+
+Todas as tentativas se referem ao **mesmo fato**: uma registra e as outras
+recebem a resposta original, com o mesmo identificador. Recusar as perdedoras
+com `409` seria punir o chamador por uma falha de rede — e é o erro que uma
+leitura apressada da regra produziria.
+
+Há teste de integração com 20 tentativas simultâneas que exige exatamente isso:
+uma `Registered`, dezenove `Replayed`, nenhuma em conflito, e um único
+identificador entre as vinte respostas.
+
 ### O caso do conteúdo diferente
 
 ```mermaid

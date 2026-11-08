@@ -259,6 +259,32 @@ judicial e bloqueio operacional?
 
 ---
 
+## PR-14 — Limites temporais do registro
+
+**Lacuna.** O enunciado não diz quão retroativa uma movimentação pode ser, nem o
+que fazer com uma data no futuro.
+
+**Premissa.** Dois limites, ambos configuráveis:
+
+| Limite | Padrão | Por quê |
+|--------|--------|---------|
+| Tolerância para o futuro | 1 minuto | Relógios de servidores divergem por alguns segundos mesmo com NTP. Recusar com tolerância zero rejeitaria movimentação legítima enviada "agora" por um sistema cujo relógio está um pouco à frente. O limite impede data absurda — ano 2099 —, não desvio normal |
+| Retroatividade máxima | 30 dias | Retroatividade é legítima ([PR-04](#pr-04)). O limite barra erro de digitação ou de conversão de data — ano 1900 — que entraria no razão e invalidaria snapshots de anos inteiros antes de alguém notar |
+
+**Por que isto é política e não invariante de domínio.** `Movement` não valida
+nenhum dos dois, de propósito. A verificação correta depende de uma
+**tolerância**, e tolerância precisa ser ajustável por quem opera o sistema —
+logo pertence à camada que pode configurá-la, não ao tipo que representa o fato.
+
+**Impacto se estiver errada.** Baixo e localizado: são dois valores em
+`RegisterMovementOptions`, com teste que demonstra o ajuste.
+
+**Pergunta ao banco.** Qual o atraso máximo real de uma movimentação retroativa?
+Existe processo que envie lançamentos com meses de atraso — conciliação de
+arquivo, por exemplo?
+
+---
+
 ## Contradição aparente no enunciado
 
 O enunciado pede uma solução "robusta, apta a operar em um ambiente financeiro
