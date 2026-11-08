@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using Ledger.Application.Abstractions;
+using Ledger.Application.Observability;
 using Ledger.Domain;
 
 namespace Ledger.Application.Balances;
@@ -134,7 +136,8 @@ public sealed class GetBalanceHandler(
     ILedgerRepository repository,
     ISnapshotStore snapshots,
     IClock clock,
-    GetBalanceOptions? options = null)
+    GetBalanceOptions? options = null,
+    LedgerMetrics? metrics = null)
 {
     private readonly GetBalanceOptions _options = options ?? new GetBalanceOptions();
 
@@ -144,6 +147,10 @@ public sealed class GetBalanceHandler(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
+
+        // Stopwatch e não o IClock: a duração é tempo decorrido real, e o relógio
+        // injetável existe para controlar o tempo de NEGÓCIO nos testes.
+        var inicio = Stopwatch.GetTimestamp();
 
         var agora = clock.UtcNow;
         var corte = query.AsOf ?? agora;
@@ -212,6 +219,13 @@ public sealed class GetBalanceHandler(
         // falhe aqui, em lugar de aparecer arredondada na resposta.
         var saldo = Money.Of(aberturaBruta, conta.Currency)
             .Add(Money.Of(delta.SignedAmount, conta.Currency));
+
+        var fonte = fechamento is null ? BalanceSource.DirectSum : BalanceSource.SnapshotPlusDelta;
+
+        metrics?.BalanceQueried(
+            Stopwatch.GetElapsedTime(inicio),
+            fonte.ToString(),
+            baseDeCalculo.SkippedStale);
 
         return new GetBalanceResult(
             GetBalanceStatus.Found,

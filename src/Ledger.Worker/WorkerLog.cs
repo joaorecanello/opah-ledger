@@ -44,13 +44,25 @@ internal static partial class WorkerLog
     public static partial void ReconciliacaoLimpa(ILogger logger, int verificados);
 
     /// <remarks>
+    /// <para>
     /// Nível de erro, não aviso. Saldo divergente é o pior defeito possível
     /// deste sistema: as outras medições dizem se ele está rápido ou se devolve
-    /// erro, e nenhuma pega responder <c>200 OK</c> com o número errado.
+    /// erro, e nenhuma pega responder <c>200 OK</c> com o número errado. A
+    /// métrica <c>ledger.snapshot.divergence</c> é quem dispara o alerta; este log
+    /// é o que o plantonista lê depois.
+    /// </para>
     /// <para>
-    /// Em E12 isto também incrementa <c>ledger_snapshot_divergence_total</c>,
-    /// cujo alerta dispara em qualquer valor diferente de zero — não há limiar
-    /// tolerável para divergência de saldo.
+    /// <b>A assinatura não aceita conta nem saldo, e isso é o ponto.</b> A versão
+    /// anterior recebia o identificador da conta e os dois saldos e os imprimia em
+    /// claro — o oposto do que o ADR-0009 exige, e exatamente o log que alguém
+    /// copia para um chamado. Em vez de depender de cuidado em cada chamada, o
+    /// vazamento deixou de ser expressável: o método só aceita a referência opaca
+    /// (<see cref="Ledger.Application.Observability.LogRef"/>) e a data.
+    /// </para>
+    /// <para>
+    /// Para investigar, o suporte calcula a referência a partir do número da
+    /// conta do cliente e a procura aqui; os valores divergentes se leem no banco,
+    /// com credencial auditada, e não num agregador de logs.
     /// </para>
     /// </remarks>
     [LoggerMessage(
@@ -58,16 +70,14 @@ internal static partial class WorkerLog
         Level = LogLevel.Error,
         Message = "Reconciliação encontrou {Divergencias} fechamentos divergentes em "
                 + "{Verificados} verificados; {Marcados} marcados para recálculo. "
-                + "Primeira: conta {Conta} em {Dia}, gravado {Gravado}, recalculado {Recalculado}.")]
+                + "Primeira: conta {ContaRef} em {Dia}.")]
     public static partial void ReconciliacaoDivergente(
         ILogger logger,
         int divergencias,
         int verificados,
         int marcados,
-        Guid conta,
-        DateOnly dia,
-        decimal gravado,
-        decimal recalculado);
+        string contaRef,
+        DateOnly dia);
 
     [LoggerMessage(
         EventId = 2003,

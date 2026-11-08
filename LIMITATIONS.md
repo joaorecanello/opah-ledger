@@ -118,13 +118,15 @@ Escrita e leitura usam o mesmo banco. A resposta de saldo já carrega `source` e
 
 ## Observabilidade do que já existe
 
-A reconciliação **detecta** divergência de saldo e registra em log de nível de
-erro, com os números. O que falta é a métrica
-`ledger_snapshot_divergence_total` e o alerta que dispara em qualquer valor
-diferente de zero.
+A reconciliação **detecta** divergência de saldo, registra em log de nível de
+erro (sem identificar a conta nem expor saldos) e incrementa a métrica
+`ledger_snapshot_divergence_total`. O que **continua faltando é o alerta** que
+dispara em qualquer valor diferente de zero: não há Prometheus/Alertmanager no
+repositório, só a métrica exposta por OTLP.
 
-Isso importa mais que parece: hoje a divergência está num log que alguém precisa
-estar olhando. O alerta é o que transforma detecção em resposta.
+Isso importa mais que parece: a métrica existe, mas sem regra de alerta ela só
+é vista por quem olhar o painel. O alerta é o que transforma detecção em
+resposta. Também não há painel versionado nem retenção/amostragem configuradas.
 
 ## Métrica de contagem no caminho de snapshot
 

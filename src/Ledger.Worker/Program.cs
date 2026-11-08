@@ -1,4 +1,5 @@
 using Ledger.Infrastructure;
+using Ledger.Infrastructure.Telemetry;
 using Ledger.Worker;
 
 // Ledger.Worker — processamento em background.
@@ -17,7 +18,18 @@ using Ledger.Worker;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+// Mesmo formato de log da API: um agregador que lê os dois processos não deveria
+// precisar de dois parsers.
+builder.Logging.ClearProviders();
+builder.Logging.AddJsonConsole(opcoes =>
+{
+    opcoes.IncludeScopes = true;
+    opcoes.UseUtcTimestamp = true;
+    opcoes.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
+});
+
 builder.Services.AddLedger();
+builder.Services.AddLedgerTelemetry("ledger-worker");
 builder.Services.AddSingleton(new SnapshotJobOptions());
 
 // Encerramento gracioso: ao receber SIGTERM, o host sinaliza o cancelamento e

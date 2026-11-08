@@ -4,27 +4,34 @@ namespace Ledger.Api.Resilience;
 /// Mensagens de log geradas em tempo de compilação.
 /// </summary>
 /// <remarks>
+/// <para>
 /// O gerador do <see cref="LoggerMessageAttribute"/> verifica o nível antes de
 /// avaliar os argumentos. Num caminho que, durante uma queda, roda a cada
 /// requisição, isso é diferença entre custo zero e uma alocação por chamada com o
 /// log desligado.
+/// </para>
+/// <para>
+/// Rotas aparecem como <b>template</b> (<c>/api/v1/accounts/{accountId}/balance</c>),
+/// nunca como o caminho recebido: o caminho carrega o identificador da conta, e o
+/// log não pode. Nenhum método aqui aceita um <c>PathString</c>.
+/// </para>
 /// </remarks>
 internal static partial class ApiLog
 {
     [LoggerMessage(
         EventId = 3001,
         Level = LogLevel.Warning,
-        Message = "Dependência indisponível ao atender {Caminho}. A requisição recebeu 503.")]
+        Message = "Dependência indisponível ao atender {Rota}. A requisição recebeu 503.")]
     public static partial void DependenciaIndisponivel(
         ILogger logger,
         Exception erro,
-        PathString caminho);
+        string rota);
 
     [LoggerMessage(
         EventId = 3002,
         Level = LogLevel.Warning,
-        Message = "Requisição a {Caminho} recusada sem consultar o banco: circuito aberto.")]
-    public static partial void RecusadoComCircuitoAberto(ILogger logger, PathString caminho);
+        Message = "Requisição a {Rota} recusada sem consultar o banco: circuito aberto.")]
+    public static partial void RecusadoComCircuitoAberto(ILogger logger, string rota);
 
     [LoggerMessage(
         EventId = 3003,

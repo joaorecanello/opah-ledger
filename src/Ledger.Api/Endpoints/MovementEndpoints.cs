@@ -1,4 +1,5 @@
 using Ledger.Api.Contracts;
+using Ledger.Api.Observability;
 using Ledger.Api.Resilience;
 using Ledger.Application.Accounts;
 using Ledger.Application.Movements;
@@ -11,9 +12,6 @@ public static class MovementEndpoints
 {
     /// <summary>Cabeçalho que transporta a chave de idempotência.</summary>
     public const string IdempotencyKeyHeader = "Idempotency-Key";
-
-    /// <summary>Cabeçalho opcional de correlação.</summary>
-    public const string CorrelationIdHeader = "X-Correlation-Id";
 
     /// <summary>Registra as rotas de movimentação no grupo informado.</summary>
     public static RouteGroupBuilder MapMovements(this RouteGroupBuilder group)
@@ -72,16 +70,10 @@ public static class MovementEndpoints
             return LedgerProblems.UnknownMovementType(request.Type);
         }
 
-        var correlacao = context.Request.Headers[CorrelationIdHeader].ToString();
-
-        if (string.IsNullOrWhiteSpace(correlacao))
-        {
-            // Sem correlação informada, usa a da própria requisição. O campo é
-            // obrigatório no domínio e é o que permite, meses depois, recuperar
-            // a chamada que originou um lançamento contestado — então ele nunca
-            // fica vazio.
-            correlacao = context.TraceIdentifier;
-        }
+        // Resolvida e validada pelo CorrelationMiddleware, que também a espalha por
+        // log, trace e resposta. O campo é obrigatório no domínio e é o que permite,
+        // meses depois, recuperar a chamada que originou um lançamento contestado.
+        var correlacao = context.GetCorrelationId();
 
         var resultado = await handler.HandleAsync(
             new RegisterMovementCommand(

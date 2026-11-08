@@ -2,6 +2,7 @@ using Ledger.Application.Abstractions;
 using Ledger.Application.Accounts;
 using Ledger.Application.Balances;
 using Ledger.Application.Movements;
+using Ledger.Application.Observability;
 using Ledger.Infrastructure.Persistence;
 using Ledger.Infrastructure.Resilience;
 using Microsoft.EntityFrameworkCore;
@@ -52,6 +53,11 @@ public static class LedgerServiceCollectionExtensions
         });
 
         services.AddSingleton<LedgerDatabaseProbe>();
+
+        // Criadas pela fábrica de medidores do host, e não como estado estático:
+        // cada host tem as suas séries, e a descoberta pelo nome "Ledger" continua
+        // funcionando para o OpenTelemetry. Ver LedgerMetrics.
+        services.AddSingleton<LedgerMetrics>();
 
         services.AddScoped<ILedgerRepository, LedgerRepository>();
         services.AddScoped<ISnapshotStore, SnapshotStore>();

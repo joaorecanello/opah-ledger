@@ -1,4 +1,5 @@
 using Ledger.Application.Abstractions;
+using Ledger.Application.Observability;
 using Ledger.Domain;
 
 namespace Ledger.Application.Balances;
@@ -7,10 +8,16 @@ namespace Ledger.Application.Balances;
 /// <param name="AccountsProcessed">Contas que tiveram ao menos um dia consolidado.</param>
 /// <param name="AccountsVisited">Contas examinadas.</param>
 /// <param name="SnapshotsWritten">Fechamentos gravados ou substituídos.</param>
+/// <param name="MaxLagDays">
+/// Quantos dias a conta mais atrasada ainda tem por consolidar depois desta
+/// passada. Zero significa em dia; diferente de zero significa que o limite de
+/// dias por passada foi atingido e a próxima continua.
+/// </param>
 public sealed record ConsolidationReport(
     int AccountsVisited,
     int AccountsProcessed,
-    int SnapshotsWritten);
+    int SnapshotsWritten,
+    int MaxLagDays = 0);
 
 /// <summary>Política da consolidação.</summary>
 public sealed record ConsolidateSnapshotsOptions
@@ -55,7 +62,8 @@ public sealed class ConsolidateSnapshotsHandler(
     ILedgerRepository repository,
     ISnapshotStore snapshots,
     IClock clock,
-    ConsolidateSnapshotsOptions? options = null)
+    ConsolidateSnapshotsOptions? options = null,
+    LedgerMetrics? metrics = null)
 {
     private readonly ConsolidateSnapshotsOptions _options =
         options ?? new ConsolidateSnapshotsOptions();
@@ -67,12 +75,13 @@ public sealed class ConsolidateSnapshotsHandler(
 
         var processadas = 0;
         var gravados = 0;
+        var piorAtraso = 0;
 
         foreach (var conta in contas)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var escritos = await ConsolidarContaAsync(conta, cancellationToken)
+            var (escritos, atraso) = await ConsolidarComAtrasoAsync(conta, cancellationToken)
                 .ConfigureAwait(false);
 
             if (escritos > 0)
@@ -80,15 +89,41 @@ public sealed class ConsolidateSnapshotsHandler(
                 processadas++;
                 gravados += escritos;
             }
+
+            piorAtraso = Math.Max(piorAtraso, atraso);
         }
 
-        return new ConsolidationReport(contas.Count, processadas, gravados);
+        metrics?.SnapshotsConsolidated(gravados);
+
+        // Publicado mesmo quando é zero: um gauge que só aparece quando há atraso
+        // não distingue "em dia" de "o worker parou de reportar".
+        metrics?.SnapshotLag(TimeSpan.FromDays(piorAtraso));
+
+        return new ConsolidationReport(contas.Count, processadas, gravados, piorAtraso);
     }
 
     /// <summary>Consolida uma conta. Devolve quantos fechamentos foram gravados.</summary>
     public async Task<int> ConsolidarContaAsync(
         AccountId accountId,
         CancellationToken cancellationToken = default)
+    {
+        var (escritos, _) = await ConsolidarComAtrasoAsync(accountId, cancellationToken)
+            .ConfigureAwait(false);
+
+        return escritos;
+    }
+
+    /// <summary>
+    /// Consolida uma conta e informa quantos dias ainda faltam depois da passada.
+    /// </summary>
+    /// <remarks>
+    /// O atraso volta como valor, e não como estado do handler, porque a mesma
+    /// instância atende várias contas em sequência: um campo entre chamadas seria
+    /// estado escondido, e este código é imutável e explícito no resto.
+    /// </remarks>
+    private async Task<(int Escritos, int AtrasoEmDias)> ConsolidarComAtrasoAsync(
+        AccountId accountId,
+        CancellationToken cancellationToken)
     {
         var ultimoDiaFechado = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime).AddDays(-1);
 
@@ -97,7 +132,7 @@ public sealed class ConsolidateSnapshotsHandler(
 
         if (inicio is null || inicio > ultimoDiaFechado)
         {
-            return 0;
+            return (0, 0);
         }
 
         var fim = inicio.Value.AddDays(_options.MaxDaysPerAccountPerRun - 1);
@@ -106,6 +141,10 @@ public sealed class ConsolidateSnapshotsHandler(
         {
             fim = ultimoDiaFechado;
         }
+
+        // O que sobra depois desta passada: zero quando a conta chega ao último dia
+        // encerrado, positivo quando o limite de dias por passada a deteve.
+        var atraso = ultimoDiaFechado.DayNumber - fim.DayNumber;
 
         // Abertura recalculada do razão, e não lida do snapshot anterior.
         //
@@ -125,7 +164,7 @@ public sealed class ConsolidateSnapshotsHandler(
 
         if (moeda is null)
         {
-            return 0;
+            return (0, 0);
         }
 
         var gravados = 0;
@@ -154,7 +193,7 @@ public sealed class ConsolidateSnapshotsHandler(
             gravados++;
         }
 
-        return gravados;
+        return (gravados, atraso);
     }
 
     /// <summary>

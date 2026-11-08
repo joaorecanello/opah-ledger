@@ -1,4 +1,5 @@
 using Ledger.Application.Abstractions;
+using Ledger.Application.Observability;
 using Ledger.Domain;
 
 namespace Ledger.Application.Movements;
@@ -146,7 +147,8 @@ public sealed record RegisterMovementOptions
 public sealed class RegisterMovementHandler(
     ILedgerRepository repository,
     IClock clock,
-    RegisterMovementOptions? options = null)
+    RegisterMovementOptions? options = null,
+    LedgerMetrics? metrics = null)
 {
     private readonly RegisterMovementOptions _options = options ?? new RegisterMovementOptions();
 
@@ -222,6 +224,8 @@ public sealed class RegisterMovementHandler(
 
         if (desfecho == LedgerWriteOutcome.Persisted)
         {
+            metrics?.MovementPosted(command.Type);
+
             return new RegisterMovementResult(
                 RegisterMovementStatus.Registered,
                 movimentacao.Id.Value,
@@ -251,6 +255,8 @@ public sealed class RegisterMovementHandler(
             // original pode estar no razão, e repetir duplicaria dinheiro.
             // Recusar é a única opção segura — e o chamador precisa investigar,
             // não insistir.
+            metrics?.IdempotencyConflict();
+
             return new RegisterMovementResult(
                 RegisterMovementStatus.ConflictingPayload,
                 Detail: "A chave de idempotência já foi usada, mas o registro "
@@ -260,11 +266,15 @@ public sealed class RegisterMovementHandler(
 
         if (string.Equals(original.RequestFingerprint, impressaoAtual, StringComparison.Ordinal))
         {
+            metrics?.IdempotentReplay();
+
             return new RegisterMovementResult(
                 RegisterMovementStatus.Replayed,
                 original.MovementId,
                 original.RegisteredAt);
         }
+
+        metrics?.IdempotencyConflict();
 
         return new RegisterMovementResult(
             RegisterMovementStatus.ConflictingPayload,
@@ -300,6 +310,9 @@ public sealed class RegisterMovementHandler(
             : null;
     }
 
-    private static RegisterMovementResult Recusar(DomainException erro) =>
-        new(RegisterMovementStatus.Rejected, ErrorCode: erro.Code, Detail: erro.Message);
+    private RegisterMovementResult Recusar(DomainException erro)
+    {
+        metrics?.MovementRejected(erro.Code);
+        return new(RegisterMovementStatus.Rejected, ErrorCode: erro.Code, Detail: erro.Message);
+    }
 }

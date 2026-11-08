@@ -1,4 +1,5 @@
 using Ledger.Application.Balances;
+using Ledger.Application.Observability;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -151,10 +152,8 @@ public sealed class SnapshotReconciliationService(
                     relatorio.Divergences.Count,
                     relatorio.SnapshotsChecked,
                     relatorio.MarkedStale,
-                    primeira.AccountId,
-                    primeira.AsOfDate,
-                    primeira.StoredBalance,
-                    primeira.RecomputedBalance);
+                    LogRef.For(primeira.AccountId),
+                    primeira.AsOfDate);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

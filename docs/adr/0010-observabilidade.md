@@ -15,8 +15,9 @@ estruturado esteja o código.
 
 ## Decisão
 
-OpenTelemetry para traces, métricas e logs, com *exporter* OTLP. Serilog em JSON
-estruturado. *Correlation id* propagado do header, presente em todo log **e
+OpenTelemetry para traces e métricas, com *exporter* OTLP, ligado apenas quando
+`OTEL_EXPORTER_OTLP_ENDPOINT` está definida. Log em JSON estruturado pelo
+provedor de console do próprio .NET. *Correlation id* propagado do header, presente em todo log **e
 persistido na movimentação**.
 
 E, o ponto deste ADR: **métricas de negócio ao lado das técnicas.**
@@ -102,6 +103,44 @@ confundi-las faz o orquestrador matar instâncias que só estão esperando o ban
 | Log estruturado é mais verboso em volume | compensado por retenção em camadas: quente curto, frio longo |
 | Correlation id na movimentação ocupa espaço por linha | irrelevante frente ao valor em auditoria |
 | Reconciliação consome I/O | roda em janela de baixo uso, no worker, que é processo separado por [ADR-0001](0001-monolito-modular.md) |
+
+## Como ficou implementado (E12)
+
+**Desvios em relação ao desenho inicial, com o motivo:**
+
+- **JSON do console do .NET em vez de Serilog.** O provedor embutido já emite
+  JSON com campos estruturados e escopos; Serilog acrescentaria uma dependência
+  sem capacidade que este sistema use. Reavaliar se for preciso *sinks* próprios.
+- **Nomes pontuados nos instrumentos** (`ledger.snapshot.divergence`), que o
+  exporter Prometheus converte (`ledger_snapshot_divergence_total`). A tabela
+  acima usa o nome já convertido, o que se vê no painel.
+- **Duração em `TimeSpan`, não em `double`.** O tipo carrega a unidade; com número
+  nu, passar milissegundos a uma métrica em segundos erraria o histograma por
+  mil sem nenhum erro visível. Também mantém a regra de arquitetura (sem `double`
+  na aplicação) sem exceção.
+- **Fronteiras de histograma explícitas, em segundos** (1 ms a 10 s). Os limites
+  padrão do SDK foram pensados para milissegundos; aplicados a segundos, toda
+  consulta cairia no primeiro balde.
+- **Medidor criado por `IMeterFactory`**, não estático: cada host tem o seu, o que
+  permite afirmar contagens exatas em testes que rodam em paralelo.
+- **Nenhuma etiqueta de alta cardinalidade** (teste de cardinalidade a garante).
+
+**Redação de dado sensível — o que a medição achou.** Antes de implementar, o
+log da API continha o identificador da conta em quatro linhas. A origem, em três
+camadas: (1) o log de requisição do framework, (2) o caminho da requisição nas
+mensagens de erro, (3) o **escopo de hospedagem** (`RequestPath`) que o framework
+anexa a *toda* linha escrita durante a requisição — achado só pelo teste de
+redação, depois de as outras duas já terem sido corrigidas. Correções: rota
+sempre como *template*; referência opaca (`LogRef`, 12 hex de SHA-256) quando é
+preciso correlacionar linhas da mesma conta sem identificá-la; categoria
+`Microsoft.AspNetCore.Hosting.Diagnostics` desligada; `RouteRedactionProcessor`
+troca `url.path` pelo *template* nos traces. No caminho de erro, o endpoint é
+recuperado de `IExceptionHandlerFeature`, porque o middleware de exceção o limpa.
+
+**Correlação.** `X-Correlation-Id` é aceito se casar `[A-Za-z0-9._-]{1,128}`; do
+contrário é descartado e substituído (não "corrigido"). Vai ao escopo de log, à
+tag do trace, ao `ProblemDetails` (`correlationId`) e à coluna
+`movements.correlation_id`.
 
 ## Consequências
 

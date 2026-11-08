@@ -1,3 +1,4 @@
+using Ledger.Api.Observability;
 using Ledger.Infrastructure.Resilience;
 using Microsoft.AspNetCore.Diagnostics;
 using Polly.CircuitBreaker;
@@ -45,7 +46,7 @@ public sealed class DependencyUnavailableExceptionHandler(
             // sistema funcionando como projetado durante uma queda, e a 2.000
             // requisições por segundo um log de erro por requisição seria, ele
             // mesmo, parte do problema.
-            ApiLog.RecusadoComCircuitoAberto(logger, httpContext.Request.Path);
+            ApiLog.RecusadoComCircuitoAberto(logger, RouteLabel.For(httpContext));
 
             return await DependencyProblems.UnavailableAsync(
                 httpContext,
@@ -58,7 +59,7 @@ public sealed class DependencyUnavailableExceptionHandler(
         {
             // O motivo detalhado vai para o log, com a exceção — é onde quem
             // opera vai procurar. A resposta não o carrega.
-            ApiLog.DependenciaIndisponivel(logger, exception, httpContext.Request.Path);
+            ApiLog.DependenciaIndisponivel(logger, exception, RouteLabel.For(httpContext));
 
             return await DependencyProblems.UnavailableAsync(
                 httpContext,

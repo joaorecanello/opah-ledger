@@ -11,6 +11,13 @@
 
   <ItemGroup>
     <!--
+      Telemetria compartilhada por API e Worker. O exportador só é ligado quando
+      OTEL_EXPORTER_OTLP_ENDPOINT está definida; ver LedgerTelemetry.
+    -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+
+    <!--
       Referência explícita e não privada: garante que a mesma versão do EF Core
       flua para Ledger.Api e Ledger.Worker. Ver o comentário em
       Directory.Packages.props.

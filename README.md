@@ -9,7 +9,7 @@ em qualquer ponto do tempo.
 > **Estado atual: solução completa com um comando.** Os dois requisitos
 > funcionais do enunciado, expostos por HTTP, com cache de saldo consolidado e
 > reconciliado por um worker — `docker compose up --build` sobe tudo, sem .NET
-> instalado. 248 testes, 77 deles dependem de PostgreSQL real.
+> instalado. 275 testes, 80 deles dependem de PostgreSQL real.
 > [Estado atual](#estado-atual) e [LIMITATIONS.md](LIMITATIONS.md) são
 > explícitos sobre o que existe e o que não existe.
 
@@ -296,18 +296,20 @@ Detalhes e o que a medição mudou no desenho:
   de `500`; `/health/ready` degrada e `/health/live` não; circuito abre e
   recusa em 5 ms; escrita e leitura têm capacidade separada (`429`); a
   instância se recupera sozinha quando o banco volta.
-- 248 testes passando: 87 de domínio, 47 de aplicação, 7 de arquitetura,
-  107 de integração (77 dependem de PostgreSQL real).
+- 275 testes passando: 87 de domínio, 60 de aplicação, 7 de arquitetura,
+  121 de integração (80 dependem de PostgreSQL real).
+- **Observabilidade verificada:** métricas de negócio (`ledger.*`), log JSON
+  sem dado sensível (provado por teste sobre mensagem, campos, escopos e
+  exceção), `X-Correlation-Id` ponta a ponta e persistido na movimentação.
+  OTLP liga-se definindo `OTEL_EXPORTER_OTLP_ENDPOINT`; alerta ainda não existe.
 - Requisitos decompostos, 14 premissas registradas, 15 ADRs e as limitações
   conhecidas em [LIMITATIONS.md](LIMITATIONS.md).
 
 **Não existe ainda:**
-- Consulta de saldo consolidado.
-- Endpoints de negócio.
-- `docker compose up` de um comando.
-- Snapshots, resiliência, observabilidade, segurança.
+- Autenticação e autorização (a API não autentica nada) — próxima etapa.
+- Alertas sobre as métricas (a métrica de divergência existe; a regra não).
 
-Os ADRs descrevem o desenho dessas partes. Decidir antes de implementar é a
+Os ADRs descrevem o desenho dessas partes e o que ainda é só desenho. Decidir antes de implementar é a
 ordem que eu defenderia em qualquer projeto real, e é também o que o enunciado
 pede ao dizer que quer entender como se pensa e prioriza.
 
@@ -427,7 +429,7 @@ previsto.
 dotnet test
 ```
 
-248 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
+275 testes. Os de integração usam **PostgreSQL real**, não banco em memória:
 banco em memória não reproduz unique constraint sob concorrência, logo o teste
 de idempotência — o mais importante da suíte — passaria sem provar nada.
 

@@ -40,7 +40,9 @@ decisão arquitetural**, em vez de apenas exercitar código.
 
 ## O que já roda hoje
 
-248 testes: 87 de domínio, 47 de aplicação, 7 de arquitetura, 107 de integração.
+275 testes: 87 de domínio, 60 de aplicação, 7 de arquitetura, 121 de integração
+(80 dependem de PostgreSQL real). Inclui métricas, correlação e a prova de que
+nenhum valor, conta, chave de idempotência ou referência externa chega ao log.
 
 Numa máquina sem Docker e sem `LEDGER_TEST_DB`, os testes que dependem de banco
 são **ignorados com mensagem explícita** e `dotnet test` sai com código 0.

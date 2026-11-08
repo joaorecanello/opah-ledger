@@ -23,6 +23,17 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.13" />
   </ItemGroup>
 
+  <ItemGroup Label="Observabilidade">
+    <!--
+      OpenTelemetry com exportador OTLP, que é o padrão aberto: a instrumentação
+      não muda quando o banco trocar de Datadog para Grafana ou Application
+      Insights, só o destino.
+    -->
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.20.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.20.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.20.2" />
+  </ItemGroup>
+
   <ItemGroup Label="Resiliência">
     <!--
       Polly.Core, e não o metapacote Polly: só o núcleo de estratégias é usado

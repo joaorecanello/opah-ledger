@@ -1,4 +1,5 @@
 using Ledger.Application.Abstractions;
+using Ledger.Application.Observability;
 using Ledger.Domain;
 
 namespace Ledger.Application.Balances;
@@ -81,7 +82,8 @@ public sealed record ReconcileSnapshotsOptions
 public sealed class ReconcileSnapshotsHandler(
     ILedgerRepository repository,
     ISnapshotStore snapshots,
-    ReconcileSnapshotsOptions? options = null)
+    ReconcileSnapshotsOptions? options = null,
+    LedgerMetrics? metrics = null)
 {
     private readonly ReconcileSnapshotsOptions _options =
         options ?? new ReconcileSnapshotsOptions();
@@ -155,6 +157,12 @@ public sealed class ReconcileSnapshotsHandler(
                 snapshot.MovementCount,
                 recalculado.MovementCount));
         }
+
+        // A métrica mais importante do sistema. Todas as outras dizem se ele está
+        // rápido ou se devolve erro; nenhuma pega responder 200 OK, em cinco
+        // milissegundos, com o número errado. Qualquer valor acima de zero é
+        // incidente.
+        metrics?.SnapshotDivergences(divergencias.Count);
 
         var marcados = 0;
 

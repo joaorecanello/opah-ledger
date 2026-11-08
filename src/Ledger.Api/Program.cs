@@ -1,12 +1,16 @@
 using System.Threading.RateLimiting;
 using Ledger.Api.Endpoints;
+using Ledger.Api.Observability;
 using Ledger.Api.Resilience;
 using Ledger.Infrastructure;
 using Ledger.Infrastructure.Persistence;
+using Ledger.Infrastructure.Telemetry;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 
 // Ledger.Api — host HTTP do razão.
 //
@@ -18,6 +22,31 @@ using Microsoft.EntityFrameworkCore;
 // Decisões de desenho em docs/adr/.
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Log estruturado em JSON, uma linha por evento. Texto livre é legível por
+// humano e inútil para agregação: com instabilidade intermitente em pico, a
+// pergunta não é "o que diz esta linha", é "quantas vezes isto aconteceu, em
+// quais rotas, em que janela". Isso exige campo consultável, não string.
+//
+// Os escopos ficam ligados porque é por eles que o identificador de correlação
+// chega a TODA linha escrita durante a requisição, inclusive as de camadas que
+// nunca ouviram falar dele.
+builder.Logging.ClearProviders();
+builder.Logging.AddJsonConsole(opcoes =>
+{
+    opcoes.IncludeScopes = true;
+    opcoes.UseUtcTimestamp = true;
+    opcoes.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
+});
+
+// O framework abre, em volta de cada requisição, um escopo com RequestPath — o
+// caminho cru, que contém o identificador da conta — e o anexa a TODA linha
+// escrita nela, de qualquer categoria. Foi o que o teste de redação encontrou
+// depois de os logs de requisição já terem sido silenciados: o vazamento não
+// estava numa mensagem, estava no escopo. O escopo só existe se esta categoria
+// estiver habilitada em algum nível; desligá-la remove o caminho de todas as
+// linhas. TraceId e SpanId continuam, por rastreamento de atividade.
+builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.None);
 
 builder.Services.AddOpenApi();
 
@@ -31,10 +60,26 @@ builder.Services.AddProblemDetails(options =>
         // 500 não tem o que informar ao suporte além do horário.
         contexto.ProblemDetails.Extensions["traceId"] =
             System.Diagnostics.Activity.Current?.Id ?? contexto.HttpContext.TraceIdentifier;
+
+        // O mesmo identificador que o chamador enviou, ou o que foi gerado para
+        // ele. É o que se informa ao suporte: ele encontra a requisição no log, no
+        // trace e na própria movimentação.
+        contexto.ProblemDetails.Extensions["correlationId"] =
+            contexto.HttpContext.GetCorrelationId();
         contexto.ProblemDetails.Instance ??= contexto.HttpContext.Request.Path;
     });
 
 builder.Services.AddLedger();
+
+// Telemetria: traces e métricas por OTLP, ligados só quando o coletor foi
+// configurado. As métricas de negócio vêm do medidor "Ledger"; a instrumentação
+// do ASP.NET acrescenta as de transporte, e a do limitador de taxa torna visível
+// quando o bulkhead recusa (429).
+builder.Services.AddLedgerTelemetry("ledger-api")
+    .WithTracing(rastro => rastro.AddAspNetCoreInstrumentation())
+    .WithMetrics(metricas => metricas
+        .AddAspNetCoreInstrumentation()
+        .AddMeter("Microsoft.AspNetCore.RateLimiting"));
 
 // ---------------------------------------------------------------------------
 // Resiliência
@@ -135,6 +180,10 @@ builder.Services.AddOptions<HostOptions>()
         options.ShutdownTimeout = resiliencia.ShutdownTimeout);
 
 var app = builder.Build();
+
+// Primeiro do pipeline: o escopo de log com o identificador de correlação tem
+// que envolver tudo o que vem depois, inclusive o tratamento de exceção.
+app.UseMiddleware<CorrelationMiddleware>();
 
 app.UseStatusCodePages();
 app.UseExceptionHandler();
