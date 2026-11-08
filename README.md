@@ -81,7 +81,7 @@ Toda no repositório, conforme o requisito obrigatório.
 | [docs/apresentacao.md](docs/apresentacao.md) | roteiro para explicar a solução: cinco minutos, demonstração e as perguntas difíceis |
 | [LIMITATIONS.md](LIMITATIONS.md) | o que não está resolvido, por quê, e o que eu faria com mais tempo |
 
-[ADR-0002](docs/adr/0002-ledger-append-only.md) e
+**Se você tem cinco minutos:** [ADR-0002](docs/adr/0002-ledger-append-only.md) e
 [ADR-0003](docs/adr/0003-idempotencia-como-contrato.md). Todas as outras decisões
 decorrem dessas duas.
 
