@@ -192,14 +192,16 @@ app.UseMiddleware<CorrelationMiddleware>();
 // Interface do Swagger, só em desenvolvimento. Fica antes da autenticação: são
 // arquivos estáticos públicos, e o token é pedido pela própria interface, na ação
 // Authorize. O documento OpenAPI, que é endpoint, é mapeado mais abaixo.
-app.UseSwaggerUI(opcoes =>
+if (app.Environment.IsDevelopment())
 {
-    opcoes.SwaggerEndpoint("/openapi/v1.json", "Ledger API v1");
-    opcoes.RoutePrefix = "swagger";
-    opcoes.DocumentTitle = "Ledger API";
-    opcoes.EnablePersistAuthorization();
-});
-
+    app.UseSwaggerUI(opcoes =>
+    {
+        opcoes.SwaggerEndpoint("/openapi/v1.json", "Ledger API v1");
+        opcoes.RoutePrefix = "swagger";
+        opcoes.DocumentTitle = "Ledger API";
+        opcoes.EnablePersistAuthorization();
+    });
+}
 
 app.UseStatusCodePages();
 // Autenticação antes dos limites de capacidade: requisição sem credencial
@@ -214,12 +216,14 @@ app.UseRequestTimeouts();
 // gerado pelo framework; o Swagger UI apenas o apresenta. AllowAnonymous porque a
 // política padrão nega tudo, e uma documentação que exige o token que ela ensina a
 // obter não serve a ninguém. Em produção nada disto é exposto.
-app.MapOpenApi().AllowAnonymous();
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi().AllowAnonymous();
 
-app.MapGet("/", () => Results.Redirect("/swagger"))
-   .AllowAnonymous()
-   .ExcludeFromDescription();
-
+    app.MapGet("/", () => Results.Redirect("/swagger"))
+       .AllowAnonymous()
+       .ExcludeFromDescription();
+}
 
 // Vitalidade: "o processo está vivo", sem tocar em nenhuma dependência.
 //
